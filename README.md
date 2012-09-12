@@ -4,9 +4,9 @@ luv - luvit minus the 'it'
 
 # DESCRIPTION
 
-The libuv bindings shamelessly stolen from the ![luvit](https://github.com/luvit/luvit) code base. So you get just the libuv core Lua bindings. No dependency on LuaJIT.
+The libuv bindings shamelessly stolen from the [luvit](/luvit/luvit) code base. So you get just the libuv core Lua bindings. No dependency on LuaJIT.
 
-The plan is to synthesise ![libuv-lua](https://github.com/richardhundt/libuv-lua) and this library into something reasonably complete.
+The plan is to synthesise [libuv-lua](/kazupon/libuv-lua) and this library into something reasonably complete.
 
 The bindings dispatch to handlers registered on the function environment of the relevant userdata stream objects, so you need to set that up yourself for now.
 
