@@ -1,0 +1,47 @@
+
+LUADIR = /usr/local/include/luajit-2.0
+
+COPT = -O2 -fPIC
+
+CWARNS = -Wall
+
+CFLAGS = $(CWARNS) $(COPT) -I$(LUADIR) -I./uv/include -I./zmq/include
+
+OS_NAME=$(shell uname -s)
+MH_NAME=$(shell uname -m)
+
+LDFLAGS=-lm -ldl -lpthread
+
+ifeq ($(OS_NAME), Darwin)
+ifeq ($(MH_NAME), x86_64)
+LDFLAGS+=-undefined dynamic_lookup -framework CoreServices
+endif
+else
+CFLAGS+=-Wl,-E
+LDFLAGS+=-shared -lrt
+endif
+
+#SRCS := $(wildcard *.c)
+SRCS := luv.c luv_object.c luv_cond.c luv_core.c luv_fs.c luv_timer.c luv_stream.c luv_net.c luv_zmq.c luv_thread.c
+OBJS := $(patsubst %.c,%.o,$(SRCS))
+
+all: luv.so
+
+luv.so: libs $(OBJS)
+	$(CC) $(OBJS) ./uv/uv.a -o luv.so zmq/src/.libs/libzmq.a $(LDFLAGS)
+
+$(OBJS) :
+	$(CC) -c $(CFLAGS) $(SRCS)
+
+libs:
+	$(MAKE) CFLAGS="-g -fPIC" -C ./uv
+	cd ./zmq && ./autogen.sh && ./configure
+	$(MAKE) -C ./zmq
+
+clean:
+	$(MAKE) -C ./uv clean
+	$(MAKE) -C ./zmq clean
+	rm -f *.o *.so *.a
+
+.PHONY: all clean
+

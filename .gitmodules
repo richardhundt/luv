@@ -1,0 +1,6 @@
+[submodule "src/uv"]
+	path = src/uv
+	url = https://github.com/joyent/libuv.git
+[submodule "src/zmq"]
+	path = src/zmq
+	url = https://github.com/zeromq/zeromq3-x.git
