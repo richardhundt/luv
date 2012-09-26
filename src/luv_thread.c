@@ -5,25 +5,6 @@
 #include "luv_core.h"
 #include "luv_thread.h"
 
-static int luv_traceback(lua_State *L) {
-    lua_getfield(L, LUA_GLOBALSINDEX, "debug");
-    if (!lua_istable(L, -1)) {
-        lua_pop(L, 1); 
-        return 1;
-    }   
-    lua_getfield(L, -1, "traceback");
-    if (!lua_isfunction(L, -1)) {
-        lua_pop(L, 2); 
-        return 1;
-    }   
-
-    lua_pushvalue(L, 1);    /* pass error message */
-    lua_pushinteger(L, 2);  /* skip this function and traceback */
-    lua_call(L, 2, 1);      /* call debug.traceback */
-
-    return 1;
-}
-
 static int luv_writer(lua_State *L, const void* b, size_t size, void* B) {
   (void)L;
   luaL_addlstring((luaL_Buffer*)B, (const char *)b, size);

@@ -33,10 +33,12 @@ luv.so: libs $(OBJS)
 $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
 
-libs:
+libs: ./zmq/Makefile
 	$(MAKE) CFLAGS="-g -fPIC" -C ./uv
-	cd ./zmq && ./autogen.sh && ./configure
 	$(MAKE) -C ./zmq
+
+./zmq/Makefile:
+	cd ./zmq && ./autogen.sh && ./configure
 
 clean:
 	$(MAKE) -C ./uv clean
