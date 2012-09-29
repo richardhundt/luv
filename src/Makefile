@@ -22,7 +22,19 @@ LDFLAGS+=-shared -lrt
 endif
 
 #SRCS := $(wildcard *.c)
-SRCS := luv.c luv_object.c luv_cond.c luv_core.c luv_fs.c luv_timer.c luv_stream.c luv_net.c luv_zmq.c luv_thread.c
+#SRCS := luv.c luv_object.c luv_cond.c luv_core.c luv_fs.c luv_timer.c luv_stream.c luv_net.c luv_zmq.c luv_thread.c
+SRCS := luv.c \
+	luv_cond.c \
+	luv_state.c \
+	luv_fiber.c \
+	luv_thread.c \
+	luv_codec.c \
+	luv_object.c \
+	luv_timer.c \
+	luv_fs.c \
+	luv_stream.c \
+	luv_net.c \
+	luv_zmq.c
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 
 all: luv.so
@@ -34,7 +46,7 @@ $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
 
 libs: ./zmq/Makefile
-	$(MAKE) CFLAGS="-g -fPIC" -C ./uv
+	$(MAKE) CFLAGS="-fPIC" -C ./uv
 	$(MAKE) -C ./zmq
 
 ./zmq/Makefile:
