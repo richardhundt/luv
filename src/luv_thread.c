@@ -13,7 +13,8 @@ static void _async_cb(uv_async_t* handle, int status) {
 }
 
 void luvL_thread_ready(luv_thread_t* self) {
-  if (!self->flags & LUV_FREADY) {
+  if (!(self->flags & LUV_FREADY)) {
+    TRACE("SET READY\n");
     self->flags |= LUV_FREADY;
   }
 }
@@ -29,7 +30,12 @@ int luvL_thread_yield(luv_thread_t* self, int narg) {
 int luvL_thread_suspend(luv_thread_t* self) {
   if (self->flags & LUV_FREADY) {
     self->flags &= ~LUV_FREADY;
-    uv_run(self->loop);
+    int active = 0;
+    do {
+      active = uv_run_once(self->loop);
+      if (self->flags & LUV_FREADY) break;
+    }
+    while (active);
     self->flags |= LUV_FREADY;
   }
   return 1;

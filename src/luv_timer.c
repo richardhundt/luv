@@ -6,6 +6,7 @@ static void _timer_cb(uv_timer_t* handle, int status) {
   luv_state_t* s;
   ngx_queue_foreach(q, &self->rouse) {
     s = ngx_queue_data(q, luv_state_t, cond);
+    TRACE("rouse %p\n", s);
     lua_settop(s->L, 0);
     lua_pushinteger(s->L, status);
   }
