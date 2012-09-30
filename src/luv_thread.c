@@ -200,7 +200,7 @@ void luvL_thread_init_main(lua_State* L) {
 
   self->type  = LUV_TTHREAD;
   self->flags = LUV_FREADY;
-  self->loop  = uv_loop_new();
+  self->loop  = uv_default_loop();
   self->curr  = (luv_state_t*)self;
   self->L     = L;
   self->outer = (luv_state_t*)self;
@@ -325,7 +325,19 @@ static int luv_thread_join(lua_State* L) {
   luvL_thread_ready(self);
   luvL_thread_suspend(curr);
   uv_thread_join(&self->tid); /* XXX: use async instead, this blocks hard */
-  return 1; /* TODO: return values */
+
+  lua_settop(L, 0);
+
+  int i;
+  int nret = lua_gettop(self->L);
+  TRACE("nret: %i\n", nret);
+  for (i = 1; i <= nret; i++) {
+    lua_pushvalue(self->L, i);
+    luvL_thread_xdup(self->L, L);
+    lua_pop(self->L, 1);
+  }
+
+  return nret;
 }
 static int luv_thread_free(lua_State* L) {
   luv_thread_t* self = lua_touserdata(L, 1);

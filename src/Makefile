@@ -33,7 +33,9 @@ SRCS := luv.c \
 	luv_timer.c \
 	luv_fs.c \
 	luv_stream.c \
+	luv_pipe.c \
 	luv_net.c \
+	luv_process.c \
 	luv_zmq.c
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 

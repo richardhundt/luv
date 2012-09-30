@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
@@ -129,6 +131,11 @@ static const luv_const_reg_t luv_zmq_consts[] = {
 };
 
 LUALIB_API int luaopen_luv(lua_State *L) {
+  int i;
+  uv_loop_t*    loop;
+  luv_state_t*  curr;
+  luv_object_t* stdfh;
+
   lua_settop(L, 0);
 
   /* luv */
@@ -173,11 +180,41 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luvL_new_class(L, LUV_FILE_T, luv_file_meths);
   lua_pop(L, 1);
 
+  /* luv.pipe */
+  luvL_new_module(L, "luv_pipe", luv_pipe_funcs);
+  lua_setfield(L, -2, "pipe");
+  luvL_new_class(L, LUV_PIPE_T, luv_stream_meths);
+  luaL_register(L, NULL, luv_pipe_meths);
+  lua_pop(L, 1);
+
+  loop = luvL_event_loop(luvL_state_self(L));
+  curr = luvL_state_self(L);
+
+  /* luv.std{in,out,err} */
+  const char* stdfhs[] = { "stdin", "stdout", "stderr" };
+  for (i = 0; i < 3; i++) {
+    stdfh = lua_newuserdata(L, sizeof(luv_object_t));
+    luaL_getmetatable(L, LUV_PIPE_T);
+    lua_setmetatable(L, -2);
+    luvL_object_init(curr, stdfh);
+    uv_pipe_init(loop, &stdfh->h.pipe, 0);
+    uv_pipe_open(&stdfh->h.pipe, i);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, LUA_REGISTRYINDEX, stdfhs[i]);
+    lua_setfield(L, -2, stdfhs[i]);
+  }
+
   /* luv.net */
   luvL_new_module(L, "luv_net", luv_net_funcs);
   lua_setfield(L, -2, "net");
-  luvL_new_class(L, LUV_NET_TCP_T, luv_net_tcp_meths);
-  luaL_register(L, NULL, luv_stream_meths);
+  luvL_new_class(L, LUV_NET_TCP_T, luv_stream_meths);
+  luaL_register(L, NULL, luv_net_tcp_meths);
+  lua_pop(L, 1);
+
+  /* luv.process */
+  luvL_new_module(L, "luv_process", luv_process_funcs);
+  lua_setfield(L, -2, "process");
+  luvL_new_class(L, LUV_PROCESS_T, luv_process_meths);
   lua_pop(L, 1);
 
   /* luv.zmq */

@@ -12,11 +12,6 @@ static void _shutdown_cb(uv_shutdown_t* req, int status) {
   luvL_cond_signal(&self->rouse);
 }
 
-static void _close_cb(uv_handle_t* handle) {
-  luv_object_t* self = container_of(handle, luv_object_t, h);
-  self->flags |= LUV_OCLOSED;
-}
-
 static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
   TRACE("got data\n");
   luv_object_t* self  = container_of(stream, luv_object_t, h);
@@ -43,7 +38,6 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
         lua_pushnil(s->L);
       }
       else {
-        uv_close((uv_handle_t*)stream, _close_cb);
         free(buf.base);
         buf.base = NULL;
         lua_settop(s->L, 0);
@@ -64,6 +58,49 @@ static void _write_cb(uv_write_t* req, int status) {
   lua_pushinteger(rouse->L, status);
   TRACE("write_cb - wake up: %p\n", rouse);
   luvL_state_ready(rouse);
+}
+
+/* used by both tcp and pipe */
+void luvL_connect_cb(uv_connect_t* req, int status) {
+  luv_state_t* state = container_of(req, luv_state_t, req);
+  luvL_state_ready(state);
+}
+
+static void _listen_cb(uv_stream_t* server, int status) {
+  TRACE("got client connection...\n");
+  luv_object_t* self = container_of(server, luv_object_t, h);
+  lua_State* L = self->state->L;
+  luv_object_t* conn = lua_touserdata(L, 2);
+
+  int rv = uv_accept(&self->h.stream, &conn->h.stream);
+  if (rv) {
+    uv_err_t err = uv_last_error(self->h.stream.loop);
+    lua_settop(L, 0);
+    lua_pushnil(L);
+    lua_pushstring(L, uv_strerror(err));
+  }
+
+  luvL_cond_signal(&self->rouse);
+}
+
+static int luv_stream_listen(lua_State* L) {
+  luaL_checktype(L, 1, LUA_TUSERDATA);
+  luv_object_t* self = lua_touserdata(L, 1);
+  int backlog = luaL_optinteger(L, 2, 128);
+  if (uv_listen(&self->h.stream, backlog, _listen_cb)) {
+    uv_err_t err = uv_last_error(self->h.stream.loop);
+    return luaL_error(L, "listen: %s", uv_strerror(err));
+  }
+  return 0;
+}
+
+static int luv_stream_accept(lua_State *L) {
+  luaL_checktype(L, 1, LUA_TUSERDATA);
+  luaL_checktype(L, 2, LUA_TUSERDATA);
+  luv_object_t* self = lua_touserdata(L, 1);
+  lua_settop(L, 2);
+  luv_state_t* curr = luvL_state_self(L);
+  return luvL_cond_wait(&self->rouse, curr);
 }
 
 int luvL_stream_start(luv_object_t* self) {
@@ -97,7 +134,7 @@ static int luv_stream_start(lua_State* L) {
 static int luv_stream_read(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
   luv_state_t*  curr = luvL_state_self(L);
-  if (luvL_object_is_closing(self) || luvL_object_is_closed(self)) {
+  if (luvL_object_is_closing(self)) {
     return luaL_error(L, "attempt to read from a closed stream");
   }
   if (!luvL_object_is_started(self)) {
@@ -132,12 +169,6 @@ static int luv_stream_shutdown(lua_State* L) {
   uv_shutdown(&curr->req.shutdown, &self->h.stream, _shutdown_cb);
   return luvL_cond_wait(&self->rouse, curr);
 }
-static int luv_stream_close(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
-  uv_close((uv_handle_t*)&self->h.stream, _close_cb);
-  self->flags |= LUV_OCLOSING;
-  return 1;
-}
 static int luv_stream_readable(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
   lua_pushboolean(L, uv_is_readable(&self->h.stream));
@@ -150,13 +181,15 @@ static int luv_stream_writable(lua_State* L) {
   return 1;
 }
 
-/* TODO: make this generic as uv_close MUST be called on all handles */
+static int luv_stream_close(lua_State* L) {
+  luv_object_t* self = lua_touserdata(L, 1);
+  luvL_object_close(self);
+  return 1;
+
+}
 static int luv_stream_free(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
-  if (!(self->flags & LUV_OCLOSING)) {
-    uv_close((uv_handle_t*)&self->h.stream, _close_cb);
-    self->flags |= LUV_OCLOSING;
-  }
+  luvL_object_close(self);
   return 1;
 }
 
@@ -172,6 +205,8 @@ luaL_Reg luv_stream_meths[] = {
   {"write",     luv_stream_write},
   {"writable",  luv_stream_writable},
   {"start",     luv_stream_start},
+  {"listen",    luv_stream_listen},
+  {"accept",    luv_stream_accept},
   {"shutdown",  luv_stream_shutdown},
   {"close",     luv_stream_close},
   {"__gc",      luv_stream_free},

@@ -134,49 +134,6 @@ static int luv_tcp_bind(lua_State* L) {
   return 1;
 }
 
-static void _listen_cb(uv_stream_t* server, int status) {
-  TRACE("got client connection...\n");
-  luv_object_t* self = container_of(server, luv_object_t, h);
-  lua_State* L       = self->state->L;
-
-  luv_object_t* conn = luaL_checkudata(L, 2, LUV_NET_TCP_T);
-  luvL_cond_signal(&self->rouse);
-
-  int rv = uv_accept(&self->h.stream, &conn->h.stream);
-  if (rv) {
-    uv_handle_t* h = &self->h.handle;
-    uv_err_t err = uv_last_error(h->loop);
-    lua_settop(L, 0);
-    lua_pushnil(L);
-    lua_pushstring(L, uv_strerror(err));
-  }
-}
-
-static int luv_tcp_listen(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
-  int backlog = luaL_optinteger(L, 2, 128);
-  if (uv_listen(&self->h.stream, backlog, _listen_cb)) {
-    luv_state_t* curr = luvL_state_self(L);
-    uv_err_t err = uv_last_error(luvL_event_loop(curr));
-    return luaL_error(L, "listen: %s", uv_strerror(err));
-  }
-  return 0;
-}
-
-static int luv_tcp_accept(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
-  luv_object_t* conn = luaL_checkudata(L, 2, LUV_NET_TCP_T);
-  (void)conn;
-  lua_settop(L, 2);
-  luv_state_t* curr = luvL_state_self(L);
-  return luvL_cond_wait(&self->rouse, curr);
-}
-
-static void _connect_cb(uv_connect_t* req, int status) {
-  luv_state_t* state = container_of(req, luv_state_t, req);
-  luvL_state_ready(state);
-}
-
 static int luv_tcp_connect(lua_State *L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
   luv_state_t*  curr = luvL_state_self(L);
@@ -191,7 +148,7 @@ static int luv_tcp_connect(lua_State *L) {
 
   lua_settop(L, 2);
 
-  rv = uv_tcp_connect(&curr->req.connect, &self->h.tcp, addr, _connect_cb);
+  rv = uv_tcp_connect(&curr->req.connect, &self->h.tcp, addr, luvL_connect_cb);
   if (rv) {
     uv_err_t err = uv_last_error(self->h.handle.loop);
     lua_settop(L, 0);
@@ -308,8 +265,7 @@ static int luv_tcp_getpeername(lua_State* L) {
 
 static int luv_tcp_free(lua_State *L) {
   luv_object_t* self = lua_touserdata(L, 1);
-  (void)self;
-  /* TODO: shutdown? */
+  luvL_object_close(self);
   return 0;
 }
 static int luv_tcp_tostring(lua_State *L) {
@@ -327,8 +283,6 @@ luaL_Reg luv_net_funcs[] = {
 
 luaL_Reg luv_net_tcp_meths[] = {
   {"bind",        luv_tcp_bind},
-  {"listen",      luv_tcp_listen},
-  {"accept",      luv_tcp_accept},
   {"connect",     luv_tcp_connect},
   {"getsockname", luv_tcp_getsockname},
   {"getpeername", luv_tcp_getpeername},
