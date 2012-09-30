@@ -42,7 +42,25 @@ uv_loop_t* luvL_event_loop(luv_state_t* state) {
   return luvL_thread_self(state->L)->loop;
 }
 
+static int luv_mem_free(lua_State* L) {
+  lua_pushinteger(L, uv_get_free_memory());
+  return 1;
+}
+
+static int luv_mem_total(lua_State* L) {
+  lua_pushinteger(L, uv_get_total_memory());
+  return 1;
+}
+
+static int luv_hrtime(lua_State* L) {
+  lua_pushinteger(L, uv_hrtime());
+  return 1;
+}
+
 luaL_Reg luv_funcs[] = {
+  {"mem_free",      luv_mem_free},
+  {"mem_total",     luv_mem_total},
+  {"hrtime",        luv_hrtime},
   {NULL,            NULL}
 };
 

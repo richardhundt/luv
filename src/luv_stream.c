@@ -51,7 +51,6 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
         lua_pushfstring(s->L, "read: %s", uv_strerror(err));
       }
     }
-    uv_read_stop(stream);
     TRACE("wake up state: %p\n", s);
     luvL_state_ready(s);
     free(buf.base);
@@ -67,20 +66,42 @@ static void _write_cb(uv_write_t* req, int status) {
   luvL_state_ready(rouse);
 }
 
-#define STREAM_ERROR(L,fmt,loop) \
-  do { \
-    uv_err_t err = uv_last_error(loop); \
-    lua_settop(L, 0); \
-    lua_pushboolean(L, 0); \
-    lua_pushfstring(L, fmt, uv_strerror(err)); \
-  } while (0)
+int luvL_stream_start(luv_object_t* self) {
+  if (!luvL_object_is_started(self)) {
+    self->flags |= LUV_OSTARTED;
+    return uv_read_start(&self->h.stream, _alloc_cb, _read_cb);
+  }
+  return 0;
+}
+
+#define STREAM_ERROR(L,fmt,loop) do { \
+  uv_err_t err = uv_last_error(loop); \
+  lua_settop(L, 0); \
+  lua_pushboolean(L, 0); \
+  lua_pushfstring(L, fmt, uv_strerror(err)); \
+} while (0)
+
+static int luv_stream_start(lua_State* L) {
+  luv_object_t* self = lua_touserdata(L, 1);
+  if (!luvL_object_is_started(self)) {
+    if (luvL_stream_start(self)) {
+      luv_state_t* curr = luvL_state_self(L);
+      STREAM_ERROR(L, "read start: %s", luvL_event_loop(curr));
+      return 2;
+    }
+  }
+  lua_pushboolean(L, 1);
+  return 1;
+}
 
 static int luv_stream_read(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
   luv_state_t*  curr = luvL_state_self(L);
-  if (uv_read_start(&self->h.stream, _alloc_cb, _read_cb)) {
-    STREAM_ERROR(L, "read start: %s", luvL_event_loop(curr));
-    return 2;
+  if (luvL_object_is_closing(self) || luvL_object_is_closed(self)) {
+    return luaL_error(L, "attempt to read from a closed stream");
+  }
+  if (!luvL_object_is_started(self)) {
+    luvL_stream_start(self);
   }
   TRACE("read called... waiting\n");
   return luvL_cond_wait(&self->rouse, curr);
@@ -114,6 +135,7 @@ static int luv_stream_shutdown(lua_State* L) {
 static int luv_stream_close(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
   uv_close((uv_handle_t*)&self->h.stream, _close_cb);
+  self->flags |= LUV_OCLOSING;
   return 1;
 }
 static int luv_stream_readable(lua_State* L) {
@@ -149,6 +171,7 @@ luaL_Reg luv_stream_meths[] = {
   {"readable",  luv_stream_readable},
   {"write",     luv_stream_write},
   {"writable",  luv_stream_writable},
+  {"start",     luv_stream_start},
   {"shutdown",  luv_stream_shutdown},
   {"close",     luv_stream_close},
   {"__gc",      luv_stream_free},

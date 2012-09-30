@@ -1,23 +1,13 @@
 #include "luv.h"
 
-static void _prepare_cb(uv_prepare_t* handle, int status) {
-  luv_thread_t* self = container_of(handle, luv_thread_t, hook);
-  TRACE("call luvL_thread_loop\n");
-  luvL_thread_loop(self);
-  TRACE("done\n");
-}
-static void _async_cb(uv_async_t* handle, int status) {
-  (void)status;
-  (void)handle;
-  /* uv_unref((uv_handle_t*)handle); */
-}
-
 void luvL_thread_ready(luv_thread_t* self) {
   if (!(self->flags & LUV_FREADY)) {
     TRACE("SET READY\n");
     self->flags |= LUV_FREADY;
+    uv_async_send(&self->async);
   }
 }
+
 int luvL_thread_yield(luv_thread_t* self, int narg) {
   TRACE("calling uv_run_once\n");
   uv_run_once(self->loop);
@@ -27,19 +17,23 @@ int luvL_thread_yield(luv_thread_t* self, int narg) {
   }
   return narg;
 }
+
 int luvL_thread_suspend(luv_thread_t* self) {
   if (self->flags & LUV_FREADY) {
     self->flags &= ~LUV_FREADY;
     int active = 0;
     do {
+      luvL_thread_loop(self);
       active = uv_run_once(self->loop);
       if (self->flags & LUV_FREADY) break;
     }
     while (active);
+    /* nothing left to do, back in main */
     self->flags |= LUV_FREADY;
   }
-  return 1;
+  return lua_gettop(self->L);
 }
+
 int luvL_thread_resume(luv_thread_t* self, int narg) {
   /* interrupt the uv_run_once loop in luvL_thread_schedule */
   TRACE("resuming...\n");
@@ -66,10 +60,10 @@ void luvL_thread_enqueue(luv_thread_t* self, luv_fiber_t* fiber) {
   int need_async = ngx_queue_empty(&self->rouse);
   ngx_queue_insert_tail(&self->rouse, &fiber->queue);
   if (need_async) {
-    /* interrupt the event loop */
+    /* interrupt the event loop (the sequence of these two calls matters) */
     uv_async_send(&self->async);
-    /* make sure we service fibers */
-    uv_ref((uv_handle_t*)&self->hook);
+    /* make sure we loop at least once more */
+    uv_ref((uv_handle_t*)&self->async);
   }
 }
 luv_thread_t* luvL_thread_self(lua_State* L) {
@@ -150,12 +144,8 @@ int luvL_thread_once(luv_thread_t* self) {
   }
   return !ngx_queue_empty(&self->rouse);
 }
-
 int luvL_thread_loop(luv_thread_t* self) {
-  TRACE("[%p] scheduling fibers...\n", self);
   while (luvL_thread_once(self));
-  TRACE("[%p] done\n", self);
-  uv_unref((uv_handle_t*)&self->hook);
   return 0;
 }
 
@@ -198,6 +188,11 @@ int luvL_thread_xdup(lua_State* src, lua_State* dst) {
   return 0;
 }
 
+static void _async_cb(uv_async_t* handle, int status) {
+  (void)status;
+  (void)handle;
+}
+
 void luvL_thread_init_main(lua_State* L) {
   luv_thread_t* self = lua_newuserdata(L, sizeof(luv_thread_t));
   luaL_getmetatable(L, LUV_THREAD_T);
@@ -216,10 +211,6 @@ void luvL_thread_init_main(lua_State* L) {
   zmq_ctx_set(self->ctx, ZMQ_IO_THREADS, 1);
 
   ngx_queue_init(&self->rouse);
-
-  uv_prepare_init(self->loop, &self->hook);
-  uv_prepare_start(&self->hook, _prepare_cb);
-  uv_unref((uv_handle_t*)&self->hook);
 
   uv_async_init(self->loop, &self->async, _async_cb);
   uv_unref((uv_handle_t*)&self->async);
@@ -267,10 +258,6 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   self->ctx   = outer->ctx;
 
   ngx_queue_init(&self->rouse);
-
-  uv_prepare_init(self->loop, &self->hook);
-  uv_prepare_start(&self->hook, _prepare_cb);
-  uv_unref((uv_handle_t*)&self->hook);
 
   uv_async_init(self->loop, &self->async, _async_cb);
   uv_unref((uv_handle_t*)&self->async);

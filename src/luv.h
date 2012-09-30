@@ -16,16 +16,16 @@
 #include "zmq.h"
 #include "zmq_utils.h"
 
-#undef DEBUG
+#undef LUV_DEBUG
 
-#ifdef DEBUG
+#ifdef LUV_DEBUG
 #  define TRACE(fmt, ...) do { \
     fprintf(stderr, "%s: %d: %s: " fmt, \
     __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
   } while (0)
 #else
 #  define TRACE(fmt, ...) ((void)0)
-#endif /* DEBUG */
+#endif /* LUV_DEBUG */
 
 typedef union luv_handle_u {
   uv_handle_t     handle;
@@ -62,6 +62,9 @@ typedef union luv_req_u {
 
 /* default buffer size for read operations */
 #define LUV_BUF_SIZE 4096
+
+/* max path length */
+#define LUV_MAX_PATH 1024
 
 /* metatables for various types */
 #define LUV_NS_T          "luv.ns"
@@ -125,7 +128,6 @@ struct luv_thread_s {
   LUV_STATE_FIELDS;
   uv_loop_t*      loop;
   luv_state_t*    curr;
-  uv_prepare_t    hook;
   uv_thread_t     tid;
   uv_async_t      async;
 };
@@ -146,12 +148,18 @@ union luv_any_state {
 #define LUV_OCLOSING (1 << 2)
 #define LUV_OCLOSED  (1 << 3)
 
+#define luvL_object_is_started(O) ((O)->flags & LUV_OSTARTED)
+#define luvL_object_is_stopped(O) ((O)->flags & LUV_OSTOPPED)
+#define luvL_object_is_closing(O) ((O)->flags & LUV_OCLOSING)
+#define luvL_object_is_closed(O)  ((O)->flags & LUV_OCLOSED)
+
 #define LUV_OBJECT_FIELDS \
   ngx_queue_t   rouse; \
   ngx_queue_t   queue; \
   luv_state_t*  state; \
   int           flags; \
   int           type;  \
+  int           count; \
   void*         data
 
 typedef struct luv_object_s {
@@ -186,6 +194,8 @@ int  luvL_fiber_yield  (luv_fiber_t* fiber, int narg);
 int  luvL_fiber_suspend(luv_fiber_t* fiber);
 int  luvL_fiber_resume (luv_fiber_t* fiber, int narg);
 
+int  luvL_thread_loop   (luv_thread_t* thread);
+int  luvL_thread_once   (luv_thread_t* thread);
 void luvL_thread_ready  (luv_thread_t* thread);
 int  luvL_thread_yield  (luv_thread_t* thread, int narg);
 int  luvL_thread_suspend(luv_thread_t* thread);

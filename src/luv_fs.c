@@ -155,9 +155,9 @@ static void luv_fs_result(lua_State* L, uv_fs_t* req) {
 }
 
 static void luv_fs_cb(uv_fs_t* req) {
-  luv_fiber_t* fiber = container_of(req, luv_fiber_t, req);
-  luv_fs_result(fiber->L, req);
-  luvL_fiber_ready(fiber);
+  luv_state_t* state = container_of(req, luv_state_t, req);
+  luv_fs_result(state->L, req);
+  luvL_state_ready(state);
 }
 
 #define LUV_FS_CALL(L, func, misc, ...) do { \
@@ -307,6 +307,33 @@ static int luv_fs_chown(lua_State* L) {
   LUV_FS_CALL(L, chown, NULL, path, uid, gid);
 }
 
+static int luv_fs_cwd(lua_State* L) {
+  char buffer[LUV_MAX_PATH];
+  uv_err_t err = uv_cwd(buffer, LUV_MAX_PATH);
+  if (err.code) {
+    return luaL_error(L, uv_strerror(err));
+  }
+  lua_pushstring(L, buffer);
+  return 1;
+}
+
+static int luv_fs_chdir(lua_State* L) {
+  const char* dir = luaL_checkstring(L, 1);
+  uv_err_t err = uv_chdir(dir);
+  if (err.code) {
+    return luaL_error(L, uv_strerror(err));
+  }
+  return 0;
+}
+
+static int luv_fs_exepath(lua_State* L) {
+  char buffer[LUV_MAX_PATH];
+  size_t len = LUV_MAX_PATH;
+  uv_exepath(buffer, &len);
+  lua_pushlstring(L, buffer, len);
+  return 1;
+}
+
 
 /* file instance methods */
 static int luv_file_stat(lua_State* L) {
@@ -413,6 +440,9 @@ luaL_Reg luv_fs_funcs[] = {
   {"link",      luv_fs_link},
   {"symlink",   luv_fs_symlink},
   {"readlink",  luv_fs_readlink},
+  {"cwd",       luv_fs_cwd},
+  {"chdir",     luv_fs_chdir},
+  {"exepath",   luv_fs_exepath},
   {NULL,        NULL}
 };
 
