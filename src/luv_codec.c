@@ -107,6 +107,28 @@ uint8_t luvL_buf_peek(luv_buf_t* buf) {
   return *buf->head;
 }
 
+#define encoder_seen(L, idx, seen) do {\
+  int ref = lua_objlen(L, seen) + 1; \
+  lua_pushboolean(L, 1); \
+  lua_rawseti(L, seen, ref); \
+  lua_pushvalue(L, idx); \
+  lua_pushinteger(L, ref); \
+  lua_rawset(L, seen); \
+} while (0)
+
+#define encoder_hook(L, buf, seen) do { \
+  luvL_buf_put(buf, LUV_CODEC_TUSR); \
+  lua_pushvalue(L, -2); \
+  lua_call(L, 1, 2); \
+  int cbt = lua_type(L, -2); \
+  if (!(cbt == LUA_TFUNCTION || cbt == LUA_TSTRING)) { \
+    luaL_error(L, "__codec must return either a function or a string"); \
+  } \
+  encode_value(L, buf, -2, seen); \
+  encode_value(L, buf, -1, seen); \
+  lua_pop(L, 2); \
+} while (0)
+
 static void encode_value(lua_State* L, luv_buf_t* buf, int val, int seen) {
   size_t len;
   int val_type = lua_type(L, val);
@@ -146,22 +168,17 @@ static void encode_value(lua_State* L, luv_buf_t* buf, int val, int seen) {
     }
     else {
       lua_pop(L, 1); /* pop nil */
-      tag = LUV_CODEC_TVAL;
-      luvL_buf_put(buf, tag);
-
-      /* seen[#seen + 1] = true */
-      ref = lua_objlen(L, seen) + 1;
-      lua_pushboolean(L, 1);
-      lua_rawseti(L, seen, ref);
-
-      /* seen[value] = ref */
-      lua_pushvalue(L, -1);
-      lua_pushinteger(L, ref);
-      lua_rawset(L, seen);
-
-      lua_pushvalue(L, -1);
-      encode_table(L, buf, seen);
-      lua_pop(L, 1);
+      encoder_seen(L, -1, seen);
+      if (luaL_getmetafield(L, -1, "__codec")) {
+        encoder_hook(L, buf, seen);
+      }
+      else {
+        tag = LUV_CODEC_TVAL;
+        luvL_buf_put(buf, tag);
+        lua_pushvalue(L, -1);
+        encode_table(L, buf, seen);
+        lua_pop(L, 1);
+      }
     }
     break;
   }
@@ -188,15 +205,7 @@ static void encode_value(lua_State* L, luv_buf_t* buf, int val, int seen) {
         luaL_error(L, "attempt to persist a C function '%s'", ar.name);
       }
 
-      /* seen[#seen + 1] = true */
-      ref = lua_objlen(L, seen) + 1;
-      lua_pushboolean(L, 1);
-      lua_rawseti(L, seen, ref);
-
-      /* seen[value] = ref */
-      lua_pushvalue(L, -1);
-      lua_pushinteger(L, ref);
-      lua_rawset(L, seen);
+      encoder_seen(L, -1, seen);
 
       tag = LUV_CODEC_TVAL;
       luvL_buf_put(buf, tag);
@@ -222,13 +231,29 @@ static void encode_value(lua_State* L, luv_buf_t* buf, int val, int seen) {
     break;
   }
   case LUA_TUSERDATA:
-  case LUA_TLIGHTUSERDATA:
-  case LUA_TTHREAD:
+    lua_rawget(L, seen);
+    if (!lua_isnil(L, -1)) {
+      int ref = lua_tointeger(L, -1);
+      luvL_buf_put(buf, LUV_CODEC_TREF);
+      luvL_buf_write_uleb128(buf, (uint32_t)ref);
+      lua_pop(L, 1);
+    }
+    else {
+      lua_pop(L, 1); /* pop nil */
+      if (luaL_getmetafield(L, -1, "__codec")) {
+        encoder_seen(L, -2, seen);
+        encoder_hook(L, buf, seen);
+        break;
+      }
+      /* error, otherwise */
+    }
   case LUA_TNIL:
     /* type tag already written */
     break;
+  case LUA_TLIGHTUSERDATA:
+  case LUA_TTHREAD:
   default:
-    luaL_error(L, "invalid value type (%s)", lua_typename(L, val_type));
+    luaL_error(L, "cannot encode a `%s'", lua_typename(L, val_type));
   }
   lua_pop(L, 1);
 }
@@ -250,6 +275,43 @@ static int encode_table(lua_State* L, luv_buf_t* buf, int seen) {
   top = lua_gettop(L);
   return 1;
 }
+
+static void find_decoder(lua_State* L, luv_buf_t* buf, int seen) {
+  if (lua_isstring(L, -1)) {
+    int i;
+    int lookup[3] = {
+      LUA_ENVIRONINDEX,
+      LUA_REGISTRYINDEX,
+      LUA_GLOBALSINDEX
+    };
+    for (i = 0; i < 3; i++) {
+      lua_pushvalue(L, -1);
+      if (lookup[i] == LUA_GLOBALSINDEX) {
+        lua_rawget(L, lookup[i]); /* don't trip strict.lua */
+      }
+      else {
+        lua_gettable(L, lookup[i]);
+      }
+      if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+      }
+      else {
+        lua_replace(L, -2);
+        break;
+      }
+    }
+    if (!lua_isfunction(L, -1)) {
+      const char* key = lua_tostring(L, -1);
+      luaL_error(L, "failed to find a valid decoder for `%s'", key);
+    }
+  }
+}
+
+#define decoder_seen(L, idx, seen) do { \
+  int ref = lua_objlen(L, seen) + 1; \
+  lua_pushvalue(L, idx); \
+  lua_rawseti(L, seen, ref); \
+} while (0)
 
 static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
   uint8_t val_type = luvL_buf_get(buf);
@@ -278,18 +340,19 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
       ref = luvL_buf_read_uleb128(buf);
       lua_rawgeti(L, seen, ref);
     }
-    else if (tag == LUV_CODEC_TVAL) {
-      lua_newtable(L);
-
-      /* seen[#seen + 1] = val */
-      ref = lua_objlen(L, seen) + 1;
-      lua_pushvalue(L, -1);
-      lua_rawseti(L, seen, ref);
-
-      decode_table(L, buf, seen);
-    }
     else {
-      luaL_error(L, "bad encoded data");
+      if (tag == LUV_CODEC_TUSR) {
+        decode_value(L, buf, seen); /* hook */
+        find_decoder(L, buf, seen);
+        decode_value(L, buf, seen); /* any value */
+        lua_call(L, 1, 1);          /* result */
+        decoder_seen(L, -1, seen);
+      }
+      else {
+        lua_newtable(L);
+        decoder_seen(L, -1, seen);
+        decode_table(L, buf, seen);
+      }
     }
     break;
   }
@@ -302,15 +365,11 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
     }
     else {
       size_t i;
-      int ref;
       len = luvL_buf_read_uleb128(buf);
       const char* code = (char *)luvL_buf_read(buf, len);
       luaL_loadbuffer(L, code, len, "=chunk");
 
-      /* seen[#seen + 1] = val */
-      ref = lua_objlen(L, seen) + 1;
-      lua_pushvalue(L, -1);
-      lua_rawseti(L, seen, ref);
+      decoder_seen(L, -1, seen);
 
       lua_newtable(L);
       decode_table(L, buf, seen);
@@ -324,12 +383,19 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
     }
     break;
   }
-  case LUA_TUSERDATA:
-  case LUA_TLIGHTUSERDATA:
+  case LUA_TUSERDATA: {
+    decode_value(L, buf, seen); /* hook */
+    find_decoder(L, buf, seen);
+    decode_value(L, buf, seen); /* any value */
+    lua_call(L, 1, 1);          /* result */
+    decoder_seen(L, -1, seen);
+    break;
+  }
   case LUA_TNIL:
-  case LUA_TTHREAD:
     lua_pushnil(L);
     break;
+  case LUA_TLIGHTUSERDATA:
+  case LUA_TTHREAD:
   default:
     luaL_error(L, "bad code");
   }
