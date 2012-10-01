@@ -1,15 +1,14 @@
 #include "luv.h"
 
-static uv_buf_t _alloc_cb(uv_handle_t* handle, size_t size) {
+/* used by udp and stream */
+uv_buf_t luvL_alloc_cb(uv_handle_t* handle, size_t size) {
   return uv_buf_init(malloc(size), size);
 }
 
-static void _shutdown_cb(uv_shutdown_t* req, int status) {
-  luv_object_t* self = container_of(req->handle, luv_object_t, h);
+/* used by tcp and pipe */
+void luvL_connect_cb(uv_connect_t* req, int status) {
   luv_state_t* state = container_of(req, luv_state_t, req);
-  lua_settop(state->L, 0);
-  lua_pushinteger(state->L, status);
-  luvL_cond_signal(&self->rouse);
+  luvL_state_ready(state);
 }
 
 static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
@@ -60,10 +59,12 @@ static void _write_cb(uv_write_t* req, int status) {
   luvL_state_ready(rouse);
 }
 
-/* used by both tcp and pipe */
-void luvL_connect_cb(uv_connect_t* req, int status) {
+static void _shutdown_cb(uv_shutdown_t* req, int status) {
+  luv_object_t* self = container_of(req->handle, luv_object_t, h);
   luv_state_t* state = container_of(req, luv_state_t, req);
-  luvL_state_ready(state);
+  lua_settop(state->L, 0);
+  lua_pushinteger(state->L, status);
+  luvL_cond_signal(&self->rouse);
 }
 
 static void _listen_cb(uv_stream_t* server, int status) {
@@ -106,7 +107,7 @@ static int luv_stream_accept(lua_State *L) {
 int luvL_stream_start(luv_object_t* self) {
   if (!luvL_object_is_started(self)) {
     self->flags |= LUV_OSTARTED;
-    return uv_read_start(&self->h.stream, _alloc_cb, _read_cb);
+    return uv_read_start(&self->h.stream, luvL_alloc_cb, _read_cb);
   }
   return 0;
 }

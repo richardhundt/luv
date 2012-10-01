@@ -25,7 +25,7 @@ static void _getaddrinfo_cb(uv_getaddrinfo_t* req, int s, struct addrinfo* ai) {
   }
   else if (ai->ai_family == PF_INET6) {
     struct sockaddr_in6* addr = (struct sockaddr_in6*)ai->ai_addr;
-    uv_ip6_name((struct sockaddr_in6*)ai->ai_addr, host, INET6_ADDRSTRLEN);
+    uv_ip6_name(addr, host, INET6_ADDRSTRLEN);
     port = addr->sin6_port;
   }
   lua_settop(curr->L, 0);
@@ -274,11 +274,138 @@ static int luv_tcp_tostring(lua_State *L) {
   return 1;
 }
 
+static int luv_new_udp(lua_State* L) {
+  luv_state_t*  curr = luvL_state_self(L);
+  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luaL_getmetatable(L, LUV_NET_UDP_T);
+  lua_setmetatable(L, -2);
+  luvL_object_init(curr, self);
+
+  uv_udp_init(luvL_event_loop(curr), &self->h.udp);
+  return 1;
+}
+
+static int luv_udp_bind(lua_State* L) {
+  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  const char*   host = luaL_checkstring(L, 2);
+  int           port = luaL_checkint(L, 3);
+
+  int flags = 0;
+
+  struct sockaddr_in address = uv_ip4_addr(host, port);
+
+  if (uv_udp_bind(&self->h.udp, address, flags)) {
+    luv_state_t* curr = luvL_state_self(L);
+    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    return luaL_error(L, uv_strerror(err));
+  }
+
+  return 0;
+}
+
+static void _send_cb(uv_udp_send_t* req, int status) {
+  luv_state_t* curr = container_of(req, luv_state_t, req);
+  luvL_state_ready(curr);
+}
+
+static int luv_udp_send(lua_State* L) {
+  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  luv_state_t*  curr = luvL_state_self(L);
+
+  size_t len;
+
+  const char* host = luaL_checkstring(L, 2);
+  int         port = luaL_checkint(L, 3);
+  const char* mesg = luaL_checklstring(L, 4, &len);
+
+  uv_buf_t buf = uv_buf_init((char*)mesg, len);
+  struct sockaddr_in addr = uv_ip4_addr(host, port);
+
+  if (uv_udp_send(&curr->req.udp_send, &self->h.udp, &buf, 1, addr, _send_cb)) {
+    /* TODO: this shouldn't be fatal */
+    luv_state_t* curr = luvL_state_self(L);
+    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    return luaL_error(L, uv_strerror(err));
+  }
+
+  return luvL_state_suspend(curr);
+}
+
+static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct sockaddr* peer, unsigned flags) {
+  luv_object_t* self = container_of(handle, luv_object_t, h);
+  ngx_queue_t* q;
+  luv_state_t* s;
+
+  char host[INET6_ADDRSTRLEN];
+  int  port;
+
+  ngx_queue_foreach(q, &self->rouse) {
+    s = ngx_queue_data(q, luv_state_t, cond);
+
+    lua_settop(s->L, 0);
+    lua_pushlstring(s->L, buf.base, buf.len);
+
+    if (peer->sa_family == PF_INET) {
+      struct sockaddr_in* addr = (struct sockaddr_in*)peer;
+      uv_ip4_name(addr, host, INET6_ADDRSTRLEN);
+      port = addr->sin_port;
+    }
+    else if (peer->sa_family == PF_INET6) {
+      struct sockaddr_in6* addr = (struct sockaddr_in6*)peer;
+      uv_ip6_name(addr, host, INET6_ADDRSTRLEN);
+      port = addr->sin6_port;
+    }
+
+    lua_pushstring(s->L, host);
+    lua_pushinteger(s->L, port);
+    /* [ mesg, host, port ] */
+  }
+  luvL_cond_signal(&self->rouse);
+}
+
+static int luv_udp_recv(lua_State* L) {
+  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  if (!luvL_object_is_started(self)) {
+    self->flags |= LUV_OSTARTED;
+    uv_udp_recv_start(&self->h.udp, luvL_alloc_cb, _recv_cb);
+  }
+  return luvL_cond_wait(&self->rouse, luvL_state_self(L));
+}
+
+static const char* LUV_UDP_MEMBERSHIP_OPTS[] = { "join", "leave", NULL };
+
+int luv_udp_membership(lua_State* L) {
+  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  const char*  iaddr = luaL_checkstring(L, 3);
+  const char*  maddr = luaL_checkstring(L, 2);
+
+  int option = luaL_checkoption(L, 4, NULL, LUV_UDP_MEMBERSHIP_OPTS);
+  uv_membership membership = option ? UV_LEAVE_GROUP : UV_JOIN_GROUP;
+
+  if (uv_udp_set_membership(&self->h.udp, maddr, iaddr, membership)) {
+    uv_err_t err = uv_last_error(luvL_event_loop(luvL_state_self(L)));
+    return luaL_error(L, uv_strerror(err));
+  }
+
+  return 0;
+}
+
+static int luv_udp_free(lua_State *L) {
+  luv_object_t* self = lua_touserdata(L, 1);
+  luvL_object_close(self);
+  return 0;
+}
+static int luv_udp_tostring(lua_State *L) {
+  luv_object_t *self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  lua_pushfstring(L, "userdata<%s>: %p", LUV_NET_UDP_T, self);
+  return 1;
+}
+
 luaL_Reg luv_net_funcs[] = {
   {"tcp",         luv_new_tcp},
-  /* {"udp",       luv_new_udp}, */
+  {"udp",         luv_new_udp},
   {"getaddrinfo", luv_getaddrinfo},
-  {NULL,        NULL}
+  {NULL,          NULL}
 };
 
 luaL_Reg luv_net_tcp_meths[] = {
@@ -293,14 +420,13 @@ luaL_Reg luv_net_tcp_meths[] = {
   {NULL,          NULL}
 };
 
-/*
-luaL_Reg luv_udp_meths[] = {
+luaL_Reg luv_net_udp_meths[] = {
   {"bind",      luv_udp_bind},
   {"send",      luv_udp_send},
   {"recv",      luv_udp_recv},
+  {"membership",luv_udp_membership},
   {"__gc",      luv_udp_free},
   {"__tostring",luv_udp_tostring},
   {NULL,        NULL}
 };
-*/
 

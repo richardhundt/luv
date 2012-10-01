@@ -264,8 +264,13 @@ static const char* LUV_ZMQ_SOCKOPTS[] = {
 
 static int luv_zmq_socket_setsockopt(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
-  int opt = luaL_checkoption(L, 1, NULL, LUV_ZMQ_SOCKOPTS);
-  int rv;
+  int opt, rv;
+  if (lua_isstring(L, 2)) {
+    opt = luaL_checkoption(L, 2, NULL, LUV_ZMQ_SOCKOPTS);
+  }
+  else {
+    opt = luaL_checkint(L, 2);
+  }
   switch (opt) {
     case ZMQ_SNDHWM:
     case ZMQ_RCVHWM:
@@ -342,8 +347,14 @@ static int luv_zmq_socket_setsockopt(lua_State* L) {
 }
 static int luv_zmq_socket_getsockopt(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
-  int opt = luaL_checkoption(L, 1, NULL, LUV_ZMQ_SOCKOPTS);
   size_t len;
+  int opt;
+  if (lua_isstring(L, 2)) {
+    opt = luaL_checkoption(L, 2, NULL, LUV_ZMQ_SOCKOPTS);
+  }
+  else {
+    opt = luaL_checkint(L, 2);
+  }
   switch (opt) {
     case ZMQ_TYPE:
     case ZMQ_RCVMORE:

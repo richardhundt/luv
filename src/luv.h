@@ -226,8 +226,8 @@ int luvL_cond_wait      (luv_cond_t* cond, luv_state_t* curr);
 int luvL_cond_signal    (luv_cond_t* cond);
 int luvL_cond_broadcast (luv_cond_t* cond);
 
-/* used by various stream objects (tcp, pipe, tty) */
-void luvL_connect_cb(uv_connect_t* conn, int status);
+uv_buf_t luvL_alloc_cb   (uv_handle_t* handle, size_t size);
+void     luvL_connect_cb (uv_connect_t* conn, int status);
 
 int luvL_new_class (lua_State* L, const char* name, luaL_Reg* meths);
 int luvL_new_module(lua_State* L, const char* name, luaL_Reg* funcs);
@@ -258,6 +258,7 @@ luaL_Reg luv_stream_meths[32];
 
 luaL_Reg luv_net_funcs[32];
 luaL_Reg luv_net_tcp_meths[32];
+luaL_Reg luv_net_udp_meths[32];
 
 luaL_Reg luv_pipe_funcs[32];
 luaL_Reg luv_pipe_meths[32];
