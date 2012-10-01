@@ -7,6 +7,7 @@
 #define LUV_CODEC_TVAL 2
 #define LUV_CODEC_TUSR 3
 
+/* TODO: make this buffer stuff generic */
 typedef struct luv_buf_t {
   size_t   size;
   uint8_t* head;
@@ -277,33 +278,31 @@ static int encode_table(lua_State* L, luv_buf_t* buf, int seen) {
 }
 
 static void find_decoder(lua_State* L, luv_buf_t* buf, int seen) {
-  if (lua_isstring(L, -1)) {
-    int i;
-    int lookup[3] = {
-      LUA_ENVIRONINDEX,
-      LUA_REGISTRYINDEX,
-      LUA_GLOBALSINDEX
-    };
-    for (i = 0; i < 3; i++) {
-      lua_pushvalue(L, -1);
-      if (lookup[i] == LUA_GLOBALSINDEX) {
-        lua_rawget(L, lookup[i]); /* don't trip strict.lua */
-      }
-      else {
-        lua_gettable(L, lookup[i]);
-      }
-      if (lua_isnil(L, -1)) {
-        lua_pop(L, 1);
-      }
-      else {
-        lua_replace(L, -2);
-        break;
-      }
+  int i;
+  int lookup[3] = {
+    LUA_ENVIRONINDEX,
+    LUA_REGISTRYINDEX,
+    LUA_GLOBALSINDEX
+  };
+  for (i = 0; i < 3; i++) {
+    lua_pushvalue(L, -1);
+    if (lookup[i] == LUA_GLOBALSINDEX) {
+      lua_rawget(L, lookup[i]); /* don't trip strict.lua */
     }
-    if (!lua_isfunction(L, -1)) {
-      const char* key = lua_tostring(L, -1);
-      luaL_error(L, "failed to find a valid decoder for `%s'", key);
+    else {
+      lua_gettable(L, lookup[i]);
     }
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 1);
+    }
+    else {
+      lua_replace(L, -2);
+      break;
+    }
+  }
+  if (!lua_isfunction(L, -1)) {
+    const char* key = lua_tostring(L, -1);
+    luaL_error(L, "failed to find a valid decoder for `%s'", key);
   }
 }
 
@@ -343,7 +342,9 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
     else {
       if (tag == LUV_CODEC_TUSR) {
         decode_value(L, buf, seen); /* hook */
-        find_decoder(L, buf, seen);
+        if (lua_isstring(L, -1)) {
+          find_decoder(L, buf, seen);
+        }
         decode_value(L, buf, seen); /* any value */
         lua_call(L, 1, 1);          /* result */
         decoder_seen(L, -1, seen);
@@ -385,7 +386,9 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
   }
   case LUA_TUSERDATA: {
     decode_value(L, buf, seen); /* hook */
-    find_decoder(L, buf, seen);
+    if (lua_isstring(L, -1)) {
+      find_decoder(L, buf, seen);
+    }
     decode_value(L, buf, seen); /* any value */
     lua_call(L, 1, 1);          /* result */
     decoder_seen(L, -1, seen);
