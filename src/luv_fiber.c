@@ -98,7 +98,7 @@ static int luv_fiber_join(lua_State* L) {
   luv_state_t* curr = luvL_state_self(L);
   TRACE("joining fiber[%p], from [%p]\n", self, curr);
   assert((luv_state_t*)self != curr);
-  if (curr->type == LUV_TFIBER && (self->flags & LUV_FDEAD)) {
+  if (self->flags & LUV_FDEAD) {
     /* seen join after termination */
     TRACE("join after termination\n");
     return luvL_state_xcopy((luv_state_t*)self, curr);
