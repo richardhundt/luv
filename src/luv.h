@@ -226,6 +226,12 @@ int luvL_cond_wait      (luv_cond_t* cond, luv_state_t* curr);
 int luvL_cond_signal    (luv_cond_t* cond);
 int luvL_cond_broadcast (luv_cond_t* cond);
 
+int luvL_codec_encode(lua_State* L, int narg);
+int luvL_codec_decode(lua_State* L);
+
+int luvL_lib_decoder(lua_State* L);
+int luvL_zmq_ctx_decoder(lua_State* L);
+
 uv_buf_t luvL_alloc_cb   (uv_handle_t* handle, size_t size);
 void     luvL_connect_cb (uv_connect_t* conn, int status);
 

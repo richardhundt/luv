@@ -149,45 +149,6 @@ int luvL_thread_loop(luv_thread_t* self) {
   return 0;
 }
 
-int luvL_thread_xdup(lua_State* src, lua_State* dst) {
-  int type = lua_type(src, -1);
-  switch (type) {
-    case LUA_TNUMBER:
-      lua_pushnumber(dst, lua_tonumber(src, -1));
-      break;
-    case LUA_TSTRING:
-      {
-        size_t len;
-        const char* str = lua_tolstring(src, -1, &len);
-        lua_pushlstring(dst, str, len);
-      }
-      break;
-    case LUA_TBOOLEAN:
-      lua_pushboolean(dst, lua_toboolean(src, -1));
-      break;
-    case LUA_TNIL:
-      lua_pushnil(dst);
-      break;
-    case LUA_TLIGHTUSERDATA:
-    {
-      void* data = lua_touserdata(src, -1);
-      lua_pushlightuserdata(dst, data);
-      break;
-    }
-    case LUA_TTABLE:
-    case LUA_TUSERDATA:
-      if (luaL_getmetafield(src, -1, "__xdup")) {
-        lua_pushvalue(src, -2);
-        lua_pushlightuserdata(src, dst);
-        lua_call(src, 2, 0);
-        break;
-      }
-    default:
-      return luaL_error(src, "cannot xdup a %s to thread", lua_typename(src, type));
-  }
-  return 0;
-}
-
 static void _async_cb(uv_async_t* handle, int status) {
   (void)status;
   (void)handle;
@@ -268,36 +229,14 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   luaopen_luv(self->L);
   lua_settop(self->L, 0);
 
-  lua_Debug ar;
-  luaL_Buffer buf;
-  luaL_checktype(L, base, LUA_TFUNCTION);
-  lua_pushvalue(L, base);
-  luaL_buffinit(L, &buf);
-  if (lua_dump(L, _writer, &buf) != 0) {
-    luaL_error(L, "unable to dump given function");
-  }
+  TRACE("BEFORE ENCODE TOP: %i, narg: %i\n", lua_gettop(L), narg);
+  luvL_codec_encode(L, narg);
+  TRACE("AFTER ENCODE TOP: %i\n", lua_gettop(L));
 
-  luaL_pushresult(&buf);
-
-  const char* source = lua_tolstring(L, -1, &len);
-  luaL_loadbuffer(self->L, source, len, "=thread");
-  luaL_checktype(self->L, 1, LUA_TFUNCTION);
-  lua_pop(L, 2); /* function and source */
-
-  lua_settop(self->L, 1);
-  for (i = base + 1; i < base + narg; i++) {
-    lua_pushvalue(L, i);
-    luvL_thread_xdup(L, self->L);
-    lua_pop(L, 1);
-  }
-
-  lua_pushvalue(L, base);
-  lua_getinfo(L, ">nuS", &ar);
-  for (i = 1; i <= ar.nups; i++) {
-    lua_getupvalue(L, base, i);
-    luvL_thread_xdup(L, self->L);
-    lua_setupvalue(self->L, 1, i);
-  }
+  luaL_checktype(L, -1, LUA_TSTRING);
+  lua_xmove(L, self->L, 1);
+  luvL_codec_decode(self->L);
+  lua_remove(self->L, 1);
 
   /* keep a reference for reverse lookup in child */
   lua_pushthread(self->L);
@@ -307,6 +246,7 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   uv_thread_create(&self->tid, _thread_enter, self);
 
   /* inserted udata below function, so now just udata on top */
+  TRACE("HERE TOP: %i\n", lua_gettop(L));
   lua_settop(L, base - 1);
   return self;
 }
@@ -328,14 +268,10 @@ static int luv_thread_join(lua_State* L) {
 
   lua_settop(L, 0);
 
-  int i;
   int nret = lua_gettop(self->L);
-  TRACE("nret: %i\n", nret);
-  for (i = 1; i <= nret; i++) {
-    lua_pushvalue(self->L, i);
-    luvL_thread_xdup(self->L, L);
-    lua_pop(self->L, 1);
-  }
+  luvL_codec_encode(self->L, nret);
+  lua_xmove(self->L, L, 1);
+  luvL_codec_decode(L);
 
   return nret;
 }

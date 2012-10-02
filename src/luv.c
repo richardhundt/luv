@@ -6,24 +6,38 @@
 
 #include "luv.h"
 
-int luvL_lib_xdup(lua_State* L) {
-  lua_State* L1 = (lua_State*)lua_touserdata(L, 2);
-  lua_getfield(L, 1, "__name");
+int luvL_lib_decoder(lua_State* L) {
+  TRACE("LIB DECODE HOOK\n");
   const char* name = lua_tostring(L, -1);
-  lua_getfield(L1, LUA_REGISTRYINDEX, name);
-  return 0;
+  lua_getfield(L, LUA_REGISTRYINDEX, name);
+  assert(lua_istable(L, -1));
+  return 1;
+}
+
+/* return "luv:lib:decoder", <modname> */
+int luvL_lib_encoder(lua_State* L) {
+  TRACE("LIB ENCODE HOOK\n");
+  lua_pushstring(L, "luv:lib:decoder");
+  lua_getfield(L, 1, "__name");
+  assert(!lua_isnil(L, -1));
+  return 2;
 }
 
 int luvL_new_module(lua_State* L, const char* name, luaL_Reg* funcs) {
   lua_newtable(L);
+
   lua_pushstring(L, name);
   lua_setfield(L, -2, "__name");
+
   lua_pushvalue(L, -1);
   lua_setmetatable(L, -2);
-  lua_pushcfunction(L, luvL_lib_xdup);
-  lua_setfield(L, -2, "__xdup");
+
+  lua_pushcfunction(L, luvL_lib_encoder);
+  lua_setfield(L, -2, "__codec");
+
   lua_pushvalue(L, -1);
   lua_setfield(L, LUA_REGISTRYINDEX, name);
+
   if (funcs) {
     luaL_register(L, NULL, funcs);
   }
@@ -137,6 +151,13 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luv_object_t* stdfh;
 
   lua_settop(L, 0);
+
+  /* register decoders */
+  lua_pushcfunction(L, luvL_lib_decoder);
+  lua_setfield(L, LUA_REGISTRYINDEX, "luv:lib:decoder");
+
+  lua_pushcfunction(L, luvL_zmq_ctx_decoder);
+  lua_setfield(L, LUA_REGISTRYINDEX, "luv:zmq:decoder");
 
   /* luv */
   luvL_new_module(L, "luv", luv_funcs);

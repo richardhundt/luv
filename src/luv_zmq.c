@@ -460,22 +460,28 @@ static int luv_zmq_socket_free(lua_State* L) {
   return 1;
 }
 
-static int luv_zmq_ctx_xdup(lua_State* L) {
+static int luv_zmq_ctx_encoder(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_CTX_T);
-  lua_State*    L2   = (lua_State*)lua_touserdata(L, 2);
+  lua_pushstring(L, "luv:zmq:decoder");
+  lua_pushlstring(L, (char*)self->data, sizeof(void*));
+  return 2;
+}
 
-  luv_object_t* copy = lua_newuserdata(L2, sizeof(luv_object_t));
-  luaL_getmetatable(L2, LUV_ZMQ_CTX_T);
-  lua_setmetatable(L2, -2);
+int luvL_zmq_ctx_decoder(lua_State* L) {
+  luv_state_t*  curr = luvL_state_self(L);
 
-  luv_state_t* state2 = luvL_state_self(L2);
-  luvL_object_init(state2, copy);
-  copy->data  = self->data;
-  copy->flags = self->flags;
+  luv_object_t* copy = lua_newuserdata(L, sizeof(luv_object_t));
+  luaL_getmetatable(L, LUV_ZMQ_CTX_T);
+  lua_setmetatable(L, -2);
+
+  luvL_object_init(curr, copy);
+
+  copy->data = (void*)lua_tostring(L, 1);
   copy->flags |= LUV_ZMQ_XDUPCTX;
 
-  return 0;
+  return 1;
 }
+
 static int luv_zmq_ctx_tostring(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_ZMQ_CTX_T, self);
@@ -497,7 +503,7 @@ luaL_Reg luv_zmq_funcs[] = {
 
 luaL_Reg luv_zmq_ctx_meths[] = {
   {"socket",    luv_zmq_ctx_socket},
-  {"__xdup",    luv_zmq_ctx_xdup},
+  {"__codec",   luv_zmq_ctx_encoder},
   {"__gc",      luv_zmq_ctx_free},
   {"__tostring",luv_zmq_ctx_tostring},
   {NULL,        NULL}

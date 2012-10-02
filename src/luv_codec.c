@@ -279,19 +279,13 @@ static int encode_table(lua_State* L, luv_buf_t* buf, int seen) {
 
 static void find_decoder(lua_State* L, luv_buf_t* buf, int seen) {
   int i;
-  int lookup[3] = {
-    LUA_ENVIRONINDEX,
+  int lookup[2] = {
     LUA_REGISTRYINDEX,
     LUA_GLOBALSINDEX
   };
-  for (i = 0; i < 3; i++) {
+  for (i = 0; i < 2; i++) {
     lua_pushvalue(L, -1);
-    if (lookup[i] == LUA_GLOBALSINDEX) {
-      lua_rawget(L, lookup[i]); /* don't trip strict.lua */
-    }
-    else {
-      lua_gettable(L, lookup[i]);
-    }
+    lua_gettable(L, lookup[i]);
     if (lua_isnil(L, -1)) {
       lua_pop(L, 1);
     }
@@ -371,7 +365,6 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
       luaL_loadbuffer(L, code, len, "=chunk");
 
       decoder_seen(L, -1, seen);
-
       lua_newtable(L);
       decode_table(L, buf, seen);
       nups = lua_objlen(L, -1);
@@ -434,7 +427,9 @@ int luvL_codec_encode(lua_State* L, int narg) {
     encode_value(L, &buf, i, seen);
   }
 
-  lua_settop(L, 0);
+  lua_remove(L, seen);
+  lua_settop(L, seen);
+
   lua_pushlstring(L, (char *)buf.base, buf.head - buf.base);
   luvL_buf_close(&buf);
 
@@ -455,6 +450,8 @@ int luvL_codec_decode(lua_State* L) {
   lua_newtable(L);
   seen = lua_gettop(L);
   nval = luvL_buf_read_uleb128(&buf);
+
+  lua_checkstack(L, nval);
 
   for (i = 0; i < nval; i++) {
     decode_value(L, &buf, seen);
