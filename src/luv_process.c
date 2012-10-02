@@ -5,7 +5,7 @@ void _exit_cb(uv_process_t* handle, int status, int sigterm) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
 
   if (status == -1) {
-    TRACE("ERROR: %s\n", uv_strerror(uv_last_error(luvL_event_loop(self->state))));
+    TRACE("ERROR: %s\n", uv_strerror(uv_last_error(self->state->loop)));
   }
 
   lua_State* L = self->state->L;
@@ -130,12 +130,12 @@ static int luv_new_process(lua_State* L) {
   lua_insert(L, 1);
   lua_settop(L, 1);
 
-  rv = uv_spawn(luvL_event_loop(curr), &self->h.process, opts);
+  rv = uv_spawn(luvL_event_loop(L), &self->h.process, opts);
 
   free(args);
   if (env) free(env);
   if (rv) {
-    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, uv_strerror(err));
   }
 
@@ -153,7 +153,7 @@ static int luv_process_kill(lua_State* L) {
   int signum = luaL_checkint(L, 2);
 
   if (uv_process_kill(&self->h.process, signum)) {
-    uv_err_t err = uv_last_error(luvL_event_loop(self->state));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, uv_strerror(err));
   }
 

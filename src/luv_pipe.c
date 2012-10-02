@@ -2,7 +2,6 @@
 
 static int luv_new_pipe(lua_State* L) {
   luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
-  luv_state_t*  curr = luvL_state_self(L);
   luaL_getmetatable(L, LUV_PIPE_T);
   lua_setmetatable(L, -2);
   int ipc = 0;
@@ -10,7 +9,7 @@ static int luv_new_pipe(lua_State* L) {
     luaL_checktype(L, 2, LUA_TBOOLEAN);
     ipc = lua_toboolean(L, 2);
   }
-  uv_pipe_init(luvL_event_loop(curr), &self->h.pipe, ipc);
+  uv_pipe_init(luvL_event_loop(L), &self->h.pipe, ipc);
   return 1;
 }
 

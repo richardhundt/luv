@@ -67,6 +67,7 @@ luv_fiber_t* luvL_fiber_create(luv_state_t* outer, int narg) {
   self->flags = 0;
   self->data  = NULL;
   self->ctx   = outer->ctx;
+  self->loop  = outer->loop;
 
   /* fibers waiting for us to finish */
   ngx_queue_init(&self->rouse);

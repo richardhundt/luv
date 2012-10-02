@@ -169,6 +169,7 @@ void luvL_thread_init_main(lua_State* L) {
   self->ctx   = zmq_ctx_new();
   self->tid   = (uv_thread_t)uv_thread_self();
 
+  /* shared ØMQ context for channels */
   zmq_ctx_set(self->ctx, ZMQ_IO_THREADS, 1);
 
   ngx_queue_init(&self->rouse);
@@ -181,11 +182,6 @@ void luvL_thread_init_main(lua_State* L) {
   lua_rawset(L, LUA_REGISTRYINDEX);
 }
 
-static int _writer(lua_State *L, const void* b, size_t size, void* B) {
-  (void)L;
-  luaL_addlstring((luaL_Buffer*)B, (const char *)b, size);
-  return 0;
-}
 static void _thread_enter(void* arg) {
   luv_thread_t* self = (luv_thread_t*)arg;
   luaL_checktype(self->L, 1, LUA_TFUNCTION);
@@ -198,8 +194,7 @@ static void _thread_enter(void* arg) {
 
 luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   lua_State* L = outer->L;
-  int i, base;
-  size_t len;
+  int base;
 
   /* ..., func, arg1, ..., argN */
   base = lua_gettop(L) - narg + 1;

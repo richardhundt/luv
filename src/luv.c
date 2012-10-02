@@ -54,8 +54,8 @@ int luvL_new_class(lua_State* L, const char* name, luaL_Reg* meths) {
   return 1;
 }
 
-uv_loop_t* luvL_event_loop(luv_state_t* state) {
-  return luvL_thread_self(state->L)->loop;
+uv_loop_t* luvL_event_loop(lua_State* L) {
+  return luvL_state_self(L)->loop;
 }
 
 static int luv_mem_free(lua_State* L) {
@@ -208,7 +208,7 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luaL_register(L, NULL, luv_pipe_meths);
   lua_pop(L, 1);
 
-  loop = luvL_event_loop(luvL_state_self(L));
+  loop = luvL_event_loop(L);
   curr = luvL_state_self(L);
 
   /* luv.std{in,out,err} */

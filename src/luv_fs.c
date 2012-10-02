@@ -162,7 +162,7 @@ static void luv_fs_cb(uv_fs_t* req) {
 
 #define LUV_FS_CALL(L, func, misc, ...) do { \
     luv_state_t* curr = luvL_state_self(L); \
-    uv_loop_t*   loop = luvL_event_loop(curr); \
+    uv_loop_t*   loop = luvL_event_loop(L); \
     uv_fs_t*     req; \
     uv_fs_cb     cb; \
     req = &curr->req.fs; \

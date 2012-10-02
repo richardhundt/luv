@@ -51,67 +51,67 @@ int luvL_zmq_socket_recv(luv_object_t* self, luv_state_t* state) {
   return rv;
 }
 
-static void _zmq_recv_cb(uv_poll_t* handle, int status, int events) {
+static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
 
-  int readable = luvL_zmq_socket_readable(self->data);
-  if (readable == 0) return;
 
-  TRACE("poll stop\n");
-  uv_poll_stop(handle);
+  if (self->flags & LUV_ZMQ_WRECV) {
+    int readable = luvL_zmq_socket_readable(self->data);
+    if (!readable) return;
 
-  ngx_queue_t* queue = ngx_queue_head(&self->rouse);
-  luv_state_t* state = ngx_queue_data(queue, luv_state_t, cond);
-  ngx_queue_remove(queue);
+    self->flags &= ~LUV_ZMQ_WRECV;
 
-  if (readable < 0) {
-    lua_settop(state->L, 0);
-    lua_pushboolean(state->L, 0);
-    lua_pushstring(state->L, strerror(errno));
-  }
-  else if (readable > 0) {
-    int rv = luvL_zmq_socket_recv(self, state);
-    if (rv < 0) {
-      if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
-        lua_settop(state->L, 0);
-        lua_pushboolean(state->L, 0);
-        lua_pushstring(state->L, strerror(errno));
-      }
-    }
-  }
-  TRACE("ready state [%p]\n", state);
-  luvL_state_ready(state);
-}
+    ngx_queue_t* queue = ngx_queue_head(&self->rouse);
+    luv_state_t* state = ngx_queue_data(queue, luv_state_t, cond);
+    ngx_queue_remove(queue);
 
-static void _zmq_send_cb(uv_poll_t* handle, int status, int events) {
-  luv_object_t* self = container_of(handle, luv_object_t, h);
-
-  int writable = luvL_zmq_socket_writable(self->data);
-  if (writable == 0) return;
-
-  TRACE("poll stop\n");
-  uv_poll_stop(handle);
-
-  ngx_queue_t* queue = ngx_queue_head(&self->queue);
-  luv_state_t* state = ngx_queue_data(queue, luv_state_t, cond);
-  ngx_queue_remove(queue);
-
-  if (writable < 0) {
-    lua_settop(state->L, 0);
-    lua_pushboolean(state->L, 0);
-    lua_pushstring(state->L, strerror(errno));
-  }
-  else if (writable > 0) {
-    int rv = luvL_zmq_socket_send(self, state);
-    if (rv < 0) {
+    if (readable < 0) {
       lua_settop(state->L, 0);
       lua_pushboolean(state->L, 0);
       lua_pushstring(state->L, strerror(errno));
     }
+    else if (readable > 0) {
+      int rv = luvL_zmq_socket_recv(self, state);
+      if (rv < 0) {
+        if (!(errno == EAGAIN || errno == EWOULDBLOCK)) {
+          lua_settop(state->L, 0);
+          lua_pushboolean(state->L, 0);
+          lua_pushstring(state->L, strerror(errno));
+        }
+      }
+    }
+    luvL_state_ready(state);
+    return;
   }
-  TRACE("ready state %p\n", state);
-  luvL_state_ready(state);
+
+  if (self->flags & LUV_ZMQ_WSEND) {
+    int writable = luvL_zmq_socket_writable(self->data);
+    if (!writable) return;
+
+    self->flags &= ~LUV_ZMQ_WSEND;
+
+    ngx_queue_t* queue = ngx_queue_head(&self->queue);
+    luv_state_t* state = ngx_queue_data(queue, luv_state_t, cond);
+    ngx_queue_remove(queue);
+
+    if (writable < 0) {
+      lua_settop(state->L, 0);
+      lua_pushboolean(state->L, 0);
+      lua_pushstring(state->L, zmq_strerror(zmq_errno()));
+    }
+    else if (writable > 0) {
+      int rv = luvL_zmq_socket_send(self, state);
+      if (rv < 0) {
+        lua_settop(state->L, 0);
+        lua_pushboolean(state->L, 0);
+        lua_pushstring(state->L, zmq_strerror(zmq_errno()));
+      }
+    }
+    luvL_state_ready(state);
+    return;
+  }
 }
+
 
 /* Lua API */
 static int luv_new_zmq(lua_State* L) {
@@ -135,11 +135,12 @@ static int luv_zmq_ctx_socket(lua_State* L) {
   luv_object_t* ctx = lua_touserdata(L, 1);
   int type = luaL_checkint(L, 2);
 
+  luv_state_t*  curr = luvL_state_self(L);
   luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_ZMQ_SOCKET_T);
   lua_setmetatable(L, -2);
 
-  luvL_object_init(ctx->state, self);
+  luvL_object_init(curr, self);
 
   self->data = zmq_socket(ctx->data, type);
 
@@ -147,7 +148,9 @@ static int luv_zmq_ctx_socket(lua_State* L) {
   size_t len = sizeof(uv_os_sock_t);
   zmq_getsockopt(self->data, ZMQ_FD, &socket, &len);
 
-  uv_poll_init_socket(luvL_event_loop(self->state), &self->h.poll, socket);
+  uv_poll_init_socket(luvL_event_loop(L), &self->h.poll, socket);
+  uv_poll_start(&self->h.poll, UV_READABLE, _zmq_poll_cb);
+
   return 1;
 }
 
@@ -175,7 +178,7 @@ static int luv_zmq_socket_send(lua_State* L) {
   if (rv < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       TRACE("EAGAIN during SEND, polling...\n");
-      uv_poll_start(&self->h.poll, UV_READABLE, _zmq_send_cb);
+      self->flags |= LUV_ZMQ_WSEND;
       return luvL_cond_wait(&self->queue, curr);
     }
     else {
@@ -194,7 +197,7 @@ static int luv_zmq_socket_recv(lua_State* L) {
     int err = zmq_errno();
     if (err == EAGAIN || err == EWOULDBLOCK) {
       TRACE("EAGAIN during RECV, polling..\n");
-      uv_poll_start(&self->h.poll, UV_READABLE, _zmq_recv_cb);
+      self->flags |= LUV_ZMQ_WRECV;
       return luvL_cond_wait(&self->rouse, curr);
     }
     else {
@@ -209,12 +212,12 @@ static int luv_zmq_socket_recv(lua_State* L) {
 
 static int luv_zmq_socket_close(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
-  if (!(self->flags & LUV_ZMQ_SCLOSED)) {
+  if (!luvL_object_is_closed(self)) {
     if (zmq_close(self->data)) {
       /* TODO: linger and error handling */
     }
     uv_poll_stop(&self->h.poll);
-    self->flags |= LUV_ZMQ_SCLOSED;
+    luvL_object_close(self);
   }
   return 1;
 }
@@ -452,10 +455,10 @@ static int luv_zmq_socket_tostring(lua_State* L) {
 }
 static int luv_zmq_socket_free(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
-  if (!(self->flags & LUV_ZMQ_SCLOSED)) {
+  if (!luvL_object_is_closed(self)) {
     zmq_close(self->data);
     uv_poll_stop(&self->h.poll);
-    self->flags |= LUV_ZMQ_SCLOSED;
+    luvL_object_close(self);
   }
   return 1;
 }
@@ -463,7 +466,7 @@ static int luv_zmq_socket_free(lua_State* L) {
 static int luv_zmq_ctx_encoder(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_CTX_T);
   lua_pushstring(L, "luv:zmq:decoder");
-  lua_pushlstring(L, (char*)self->data, sizeof(void*));
+  lua_pushlightuserdata(L, self->data);
   return 2;
 }
 
@@ -476,8 +479,8 @@ int luvL_zmq_ctx_decoder(lua_State* L) {
 
   luvL_object_init(curr, copy);
 
-  copy->data = (void*)lua_tostring(L, 1);
-  copy->flags |= LUV_ZMQ_XDUPCTX;
+  copy->data  = lua_touserdata(L, 1);
+  copy->flags = LUV_ZMQ_XDUPCTX;
 
   return 1;
 }

@@ -19,7 +19,7 @@ static int luv_new_timer(lua_State* L) {
   lua_setmetatable(L, -2);
 
   luv_state_t* curr = luvL_state_self(L);
-  uv_timer_init(luvL_event_loop(curr), &self->h.timer);
+  uv_timer_init(luvL_event_loop(L), &self->h.timer);
   luvL_object_init(curr, self);
 
   return 1;

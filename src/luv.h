@@ -96,6 +96,8 @@ typedef union luv_req_u {
 /* ØMQ flags */
 #define LUV_ZMQ_SCLOSED (1 << 0)
 #define LUV_ZMQ_XDUPCTX (1 << 1)
+#define LUV_ZMQ_WSEND   (1 << 2)
+#define LUV_ZMQ_WRECV   (1 << 3)
 
 /* luv states */
 typedef struct luv_state_s  luv_state_t;
@@ -112,6 +114,7 @@ typedef enum {
   ngx_queue_t   queue; \
   ngx_queue_t   join;  \
   ngx_queue_t   cond;  \
+  uv_loop_t*    loop;  \
   int           type;  \
   int           flags; \
   luv_state_t*  outer; \
@@ -126,7 +129,6 @@ struct luv_state_s {
 
 struct luv_thread_s {
   LUV_STATE_FIELDS;
-  uv_loop_t*      loop;
   luv_state_t*    curr;
   uv_thread_t     tid;
   uv_async_t      async;
@@ -168,6 +170,12 @@ typedef struct luv_object_s {
   uv_buf_t      buf;
 } luv_object_t;
 
+typedef struct luv_chan_s {
+  LUV_OBJECT_FIELDS;
+  void*         put;
+  void*         get;
+} luv_chan_t;
+
 typedef struct luv_actor_s {
   LUV_OBJECT_FIELDS;
   void*         mbox;
@@ -175,10 +183,11 @@ typedef struct luv_actor_s {
 
 union luv_any_object {
   luv_object_t object;
+  luv_chan_t   chan;
   luv_actor_t  actor;
 };
 
-uv_loop_t* luvL_event_loop(luv_state_t* state);
+uv_loop_t* luvL_event_loop(lua_State* L);
 
 int luvL_state_in_thread(luv_state_t* state);
 int luvL_state_is_thread(luv_state_t* state);
@@ -214,7 +223,6 @@ void luvL_fiber_close (luv_fiber_t* self);
 
 int  luvL_thread_loop (luv_thread_t* self);
 int  luvL_thread_once (luv_thread_t* self);
-int  luvL_thread_xdup (lua_State* src, lua_State* dst);
 
 void luvL_object_init (luv_state_t* state, luv_object_t* self);
 void luvL_object_close(luv_object_t* self);

@@ -8,7 +8,7 @@ static int luv_new_tcp(lua_State* L) {
   lua_setmetatable(L, -2);
 
   luvL_object_init(curr, self);
-  uv_tcp_init(luvL_event_loop(curr), &self->h.tcp);
+  uv_tcp_init(luvL_event_loop(L), &self->h.tcp);
 
   return 1;
 }
@@ -39,7 +39,7 @@ static void _getaddrinfo_cb(uv_getaddrinfo_t* req, int s, struct addrinfo* ai) {
 
 static int luv_getaddrinfo(lua_State* L) {
   luv_state_t* curr = luvL_state_self(L);
-  uv_loop_t*   loop = luvL_event_loop(curr);
+  uv_loop_t*   loop = luvL_event_loop(L);
   uv_getaddrinfo_t* req = &curr->req.getaddrinfo;
 
   const char* node      = NULL;
@@ -186,7 +186,6 @@ static int luv_tcp_keepalive(lua_State* L) {
 /* mostly stolen from Luvit */
 static int luv_tcp_getsockname(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
-  luv_state_t*  curr = luvL_state_self(L);
 
   int port = 0;
   char ip[INET6_ADDRSTRLEN];
@@ -196,7 +195,7 @@ static int luv_tcp_getsockname(lua_State* L) {
   int len = sizeof(addr);
 
   if (uv_tcp_getsockname(&self->h.tcp, (struct sockaddr*)&addr, &len)) {
-    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, "getsockname: %s", uv_strerror(err));
   }
 
@@ -226,7 +225,6 @@ static int luv_tcp_getsockname(lua_State* L) {
 /* mostly stolen from Luvit */
 static int luv_tcp_getpeername(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
-  luv_state_t*  curr = luvL_state_self(L);
 
   int port = 0;
   char ip[INET6_ADDRSTRLEN];
@@ -236,7 +234,7 @@ static int luv_tcp_getpeername(lua_State* L) {
   int len = sizeof(addr);
 
   if (uv_tcp_getpeername(&self->h.tcp, (struct sockaddr*)&addr, &len)) {
-    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, "getpeername: %s", uv_strerror(err));
   }
 
@@ -281,7 +279,7 @@ static int luv_new_udp(lua_State* L) {
   lua_setmetatable(L, -2);
   luvL_object_init(curr, self);
 
-  uv_udp_init(luvL_event_loop(curr), &self->h.udp);
+  uv_udp_init(luvL_event_loop(L), &self->h.udp);
   return 1;
 }
 
@@ -295,8 +293,7 @@ static int luv_udp_bind(lua_State* L) {
   struct sockaddr_in address = uv_ip4_addr(host, port);
 
   if (uv_udp_bind(&self->h.udp, address, flags)) {
-    luv_state_t* curr = luvL_state_self(L);
-    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, uv_strerror(err));
   }
 
@@ -323,8 +320,7 @@ static int luv_udp_send(lua_State* L) {
 
   if (uv_udp_send(&curr->req.udp_send, &self->h.udp, &buf, 1, addr, _send_cb)) {
     /* TODO: this shouldn't be fatal */
-    luv_state_t* curr = luvL_state_self(L);
-    uv_err_t err = uv_last_error(luvL_event_loop(curr));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, uv_strerror(err));
   }
 
@@ -383,7 +379,7 @@ int luv_udp_membership(lua_State* L) {
   uv_membership membership = option ? UV_LEAVE_GROUP : UV_JOIN_GROUP;
 
   if (uv_udp_set_membership(&self->h.udp, maddr, iaddr, membership)) {
-    uv_err_t err = uv_last_error(luvL_event_loop(luvL_state_self(L)));
+    uv_err_t err = uv_last_error(luvL_event_loop(L));
     return luaL_error(L, uv_strerror(err));
   }
 

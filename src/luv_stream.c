@@ -31,7 +31,7 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
       lua_pushlstring(s->L, buf.base, len);
     }
     else {
-      uv_err_t err = uv_last_error(luvL_event_loop(state));
+      uv_err_t err = uv_last_error(state->loop);
       if (err.code == UV_EOF) {
         lua_settop(s->L, 0);
         lua_pushnil(s->L);
@@ -123,8 +123,7 @@ static int luv_stream_start(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
   if (!luvL_object_is_started(self)) {
     if (luvL_stream_start(self)) {
-      luv_state_t* curr = luvL_state_self(L);
-      STREAM_ERROR(L, "read start: %s", luvL_event_loop(curr));
+      STREAM_ERROR(L, "read start: %s", luvL_event_loop(L));
       return 2;
     }
   }
@@ -156,7 +155,7 @@ static int luv_stream_write(lua_State* L) {
   luv_state_t* curr = luvL_state_self(L);
   uv_write_t*  req  = &curr->req.write;
   if (uv_write(req, &self->h.stream, &buf, 1, _write_cb)) {
-    STREAM_ERROR(L, "write: %s", luvL_event_loop(curr));
+    STREAM_ERROR(L, "write: %s", luvL_event_loop(L));
     return 2;
   }
   lua_settop(curr->L, 1);

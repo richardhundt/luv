@@ -16,11 +16,9 @@ AR = ar
 
 ifeq ($(OS_NAME), Darwin)
 ifeq ($(MH_NAME), x86_64)
-CFLAGS+=-Wl,-E
 LDFLAGS+=-undefined dynamic_lookup -framework CoreServices
 endif
 else
-CFLAGS+=-Wl,-E
 LDFLAGS+=-shared -lrt
 endif
 
