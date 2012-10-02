@@ -16,6 +16,7 @@ AR = ar
 
 ifeq ($(OS_NAME), Darwin)
 ifeq ($(MH_NAME), x86_64)
+CFLAGS+=-Wl,-E
 LDFLAGS+=-undefined dynamic_lookup -framework CoreServices
 endif
 else
@@ -44,10 +45,12 @@ OBJS := $(patsubst %.c,%.o,$(SRCS))
 all: luv.so libluv.a
 
 luv.so: libs $(OBJS)
-	$(CC) $(OBJS) ./uv/uv.a -o luv.so ./zmq/src/.libs/libzmq.a $(LDFLAGS)
+	$(CC) $(OBJS) ./uv/uv.a ./zmq/src/.libs/libzmq.a -o luv.so $(LDFLAGS)
 
 libluv.a: libs $(OBJS)
-	$(AR) -rcs libluv.a $(OBJS) ./uv/src/*.o ./zmq/src/*.o
+	$(AR) -x ./uv/src/uv.a
+	$(AR) -x ./zmq/src/.libs/libzmq.a
+	$(AR) -rcs libluv.a *.o
 
 $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
