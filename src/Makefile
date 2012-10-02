@@ -12,6 +12,8 @@ MH_NAME=$(shell uname -m)
 
 LDFLAGS=-lm -ldl -lpthread
 
+AR = ar
+
 ifeq ($(OS_NAME), Darwin)
 ifeq ($(MH_NAME), x86_64)
 LDFLAGS+=-undefined dynamic_lookup -framework CoreServices
@@ -39,10 +41,13 @@ SRCS := luv.c \
 	luv_zmq.c
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 
-all: luv.so
+all: luv.so libluv.a
 
 luv.so: libs $(OBJS)
-	$(CC) $(OBJS) ./uv/uv.a -o luv.so zmq/src/.libs/libzmq.a $(LDFLAGS)
+	$(CC) $(OBJS) ./uv/uv.a -o luv.so ./zmq/src/.libs/libzmq.a $(LDFLAGS)
+
+libluv.a: libs $(OBJS)
+	$(AR) -rcs libluv.a $(OBJS) ./uv/src/*.o ./zmq/src/*.o
 
 $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
