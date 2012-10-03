@@ -187,6 +187,8 @@ union luv_any_object {
   luv_actor_t  actor;
 };
 
+int luvL_traceback(lua_State *L);
+
 uv_loop_t* luvL_event_loop(lua_State* L);
 
 int luvL_state_in_thread(luv_state_t* state);

@@ -185,9 +185,21 @@ void luvL_thread_init_main(lua_State* L) {
 static void _thread_enter(void* arg) {
   luv_thread_t* self = (luv_thread_t*)arg;
   luaL_checktype(self->L, 1, LUA_TFUNCTION);
+  lua_pushcfunction(self->L, luvL_traceback);
+  lua_insert(self->L, 1);
+  int nargs = lua_gettop(self->L) - 2;
 
-  int nargs = lua_gettop(self->L) - 1;
-  lua_call(self->L, nargs, LUA_MULTRET);
+  int rv = lua_pcall(self->L, nargs, LUA_MULTRET, 1);
+  lua_remove(self->L, 1); /* traceback */
+
+  if (rv) { /* error */
+    lua_pushboolean(self->L, 0);
+    lua_insert(self->L, 1);
+  }
+  else {
+    lua_pushboolean(self->L, 1);
+    lua_insert(self->L, 1);
+  }
 
   self->flags |= LUV_FDEAD;
 }
