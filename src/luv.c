@@ -92,10 +92,17 @@ static int luv_hrtime(lua_State* L) {
   return 1;
 }
 
+static int luv_self(lua_State* L) {
+  lua_pushthread(L);
+  lua_gettable(L, LUA_REGISTRYINDEX);
+  return 1;
+}
+
 luaL_Reg luv_funcs[] = {
   {"mem_free",      luv_mem_free},
   {"mem_total",     luv_mem_total},
   {"hrtime",        luv_hrtime},
+  {"self",          luv_self},
   {NULL,            NULL}
 };
 

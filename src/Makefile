@@ -46,9 +46,7 @@ luv.so: libs $(OBJS)
 	$(CC) $(OBJS) ./uv/uv.a ./zmq/src/.libs/libzmq.a -o luv.so $(LDFLAGS)
 
 libluv.a: libs $(OBJS)
-	$(AR) -x ./uv/uv.a
-	$(AR) -x ./zmq/src/.libs/libzmq.a
-	$(AR) -rcs libluv.a *.o
+	$(AR) -rcs libluv.a *.o ./uv/src/*/*.o ./uv/src/*.o ./zmq/src/*.o
 
 $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
