@@ -10,11 +10,11 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
-#include "uv.h"
+#include "uv/include/uv.h"
 #include "ngx-queue.h"
 
-#include "zmq.h"
-#include "zmq_utils.h"
+#include "zmq/include/zmq.h"
+#include "zmq/include/zmq_utils.h"
 
 #undef LUV_DEBUG
 

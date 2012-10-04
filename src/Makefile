@@ -15,8 +15,8 @@ LDFLAGS=-lm -ldl -lpthread
 AR = ar
 
 ifeq ($(OS_NAME), Darwin)
+LDFLAGS+=-bundle -undefined dynamic_lookup
 ifeq ($(MH_NAME), x86_64)
-LDFLAGS+=-undefined dynamic_lookup -framework CoreServices
 endif
 else
 LDFLAGS+=-shared -lrt
@@ -46,7 +46,7 @@ luv.so: libs $(OBJS)
 	$(CC) $(OBJS) ./uv/uv.a ./zmq/src/.libs/libzmq.a -o luv.so $(LDFLAGS)
 
 libluv.a: libs $(OBJS)
-	$(AR) -rcs libluv.a *.o ./uv/src/*/*.o ./uv/src/*.o ./zmq/src/*.o
+	$(AR) -rcs libluv.a *.o ./uv/src/*.o ./uv/src/*/*.o ./uv/src/*/*/*.o ./zmq/src/*.o
 
 $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
@@ -59,9 +59,11 @@ libs: ./zmq/Makefile
 	cd ./zmq && ./autogen.sh && ./configure
 
 clean:
-	$(MAKE) -C ./uv clean
-	$(MAKE) -C ./zmq clean
 	rm -f *.o *.so *.a
 
-.PHONY: all clean
+realclean: clean
+	$(MAKE) -C ./uv clean
+	$(MAKE) -C ./zmq clean
+
+.PHONY: all clean realclean
 
