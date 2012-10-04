@@ -6,4 +6,7 @@ all:
 clean:
 	make -C ./src clean
 
-.PHONY: all clean
+realclean:
+	make -C ./src realclean
+
+.PHONY: all clean realclean
