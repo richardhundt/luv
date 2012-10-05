@@ -213,7 +213,7 @@ static int luv_zmq_socket_recv(lua_State* L) {
 
 static int luv_zmq_socket_close(lua_State* L) {
   luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
-  if (!luvL_object_is_closed(self)) {
+  if (!luvL_object_is_closing(self)) {
     if (zmq_close(self->data)) {
       /* TODO: linger and error handling */
     }
@@ -456,7 +456,7 @@ static int luv_zmq_socket_tostring(lua_State* L) {
 }
 static int luv_zmq_socket_free(lua_State* L) {
   luv_object_t* self = lua_touserdata(L, 1);
-  if (!luvL_object_is_closed(self)) {
+  if (!luvL_object_is_closing(self)) {
     zmq_close(self->data);
     uv_poll_stop(&self->h.poll);
     luvL_object_close(self);
