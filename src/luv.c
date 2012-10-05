@@ -6,6 +6,8 @@
 
 #include "luv.h"
 
+static int MAIN_INITIALIZED = 0;
+
 int luvL_traceback(lua_State* L) {
   lua_getfield(L, LUA_GLOBALSINDEX, "debug");
   if (!lua_istable(L, -1)) {
@@ -26,9 +28,9 @@ int luvL_traceback(lua_State* L) {
 }
 
 int luvL_lib_decoder(lua_State* L) {
-  TRACE("LIB DECODE HOOK\n");
   const char* name = lua_tostring(L, -1);
   lua_getfield(L, LUA_REGISTRYINDEX, name);
+  TRACE("LIB DECODE HOOK: %s\n", name);
   assert(lua_istable(L, -1));
   return 1;
 }
@@ -194,8 +196,11 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luvL_new_class(L, LUV_THREAD_T, luv_thread_meths);
   lua_pop(L, 1);
 
-  luvL_thread_init_main(L);
-  lua_pop(L, 1);
+  if (!MAIN_INITIALIZED) {
+    MAIN_INITIALIZED = 1;
+    luvL_thread_init_main(L);
+    lua_pop(L, 1);
+  }
 
   /* luv.fiber */
   luvL_new_module(L, "luv_fiber", luv_fiber_funcs);
@@ -234,21 +239,23 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luaL_register(L, NULL, luv_pipe_meths);
   lua_pop(L, 1);
 
-  loop = luvL_event_loop(L);
-  curr = luvL_state_self(L);
-
   /* luv.std{in,out,err} */
-  const char* stdfhs[] = { "stdin", "stdout", "stderr" };
-  for (i = 0; i < 3; i++) {
-    stdfh = lua_newuserdata(L, sizeof(luv_object_t));
-    luaL_getmetatable(L, LUV_PIPE_T);
-    lua_setmetatable(L, -2);
-    luvL_object_init(curr, stdfh);
-    uv_pipe_init(loop, &stdfh->h.pipe, 0);
-    uv_pipe_open(&stdfh->h.pipe, i);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, LUA_REGISTRYINDEX, stdfhs[i]);
-    lua_setfield(L, -2, stdfhs[i]);
+  if (!MAIN_INITIALIZED) {
+    loop = luvL_event_loop(L);
+    curr = luvL_state_self(L);
+
+    const char* stdfhs[] = { "stdin", "stdout", "stderr" };
+    for (i = 0; i < 3; i++) {
+      stdfh = lua_newuserdata(L, sizeof(luv_object_t));
+      luaL_getmetatable(L, LUV_PIPE_T);
+      lua_setmetatable(L, -2);
+      luvL_object_init(curr, stdfh);
+      uv_pipe_init(loop, &stdfh->h.pipe, 0);
+      uv_pipe_open(&stdfh->h.pipe, i);
+      lua_pushvalue(L, -1);
+      lua_setfield(L, LUA_REGISTRYINDEX, stdfhs[i]);
+      lua_setfield(L, -2, stdfhs[i]);
+    }
   }
 
   /* luv.net */

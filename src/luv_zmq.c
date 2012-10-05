@@ -54,10 +54,9 @@ int luvL_zmq_socket_recv(luv_object_t* self, luv_state_t* state) {
 static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
 
-
   if (self->flags & LUV_ZMQ_WRECV) {
     int readable = luvL_zmq_socket_readable(self->data);
-    if (!readable) return;
+    if (!readable) goto wsend;
 
     self->flags &= ~LUV_ZMQ_WRECV;
 
@@ -84,6 +83,7 @@ static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
     return;
   }
 
+  wsend:
   if (self->flags & LUV_ZMQ_WSEND) {
     int writable = luvL_zmq_socket_writable(self->data);
     if (!writable) return;
@@ -176,7 +176,8 @@ static int luv_zmq_socket_send(lua_State* L) {
   luv_state_t*  curr = luvL_state_self(L);
   int rv = luvL_zmq_socket_send(self, curr);
   if (rv < 0) {
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+    int err = zmq_errno();
+    if (err == EAGAIN || err == EWOULDBLOCK) {
       TRACE("EAGAIN during SEND, polling...\n");
       self->flags |= LUV_ZMQ_WSEND;
       return luvL_cond_wait(&self->queue, curr);
@@ -471,7 +472,9 @@ static int luv_zmq_ctx_encoder(lua_State* L) {
 }
 
 int luvL_zmq_ctx_decoder(lua_State* L) {
+  TRACE("ZMQ ctx decode hook\n");
   luv_state_t*  curr = luvL_state_self(L);
+  luaL_checktype(L, -1, LUA_TLIGHTUSERDATA);
 
   luv_object_t* copy = lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_ZMQ_CTX_T);
@@ -479,7 +482,7 @@ int luvL_zmq_ctx_decoder(lua_State* L) {
 
   luvL_object_init(curr, copy);
 
-  copy->data  = lua_touserdata(L, 1);
+  copy->data  = lua_touserdata(L, -2);
   copy->flags = LUV_ZMQ_XDUPCTX;
 
   return 1;

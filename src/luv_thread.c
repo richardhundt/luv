@@ -23,11 +23,17 @@ int luvL_thread_suspend(luv_thread_t* self) {
     self->flags &= ~LUV_FREADY;
     int active = 0;
     do {
+      TRACE("loop top\n");
       luvL_thread_loop(self);
       active = uv_run_once(self->loop);
-      if (self->flags & LUV_FREADY) break;
+      TRACE("uv_run_once returned, active: %i\n", active);
+      if (self->flags & LUV_FREADY) {
+        TRACE("main ready, breaking\n");
+        break;
+      }
     }
     while (active);
+    TRACE("back in main\n");
     /* nothing left to do, back in main */
     self->flags |= LUV_FREADY;
   }
@@ -60,6 +66,7 @@ void luvL_thread_enqueue(luv_thread_t* self, luv_fiber_t* fiber) {
   int need_async = ngx_queue_empty(&self->rouse);
   ngx_queue_insert_tail(&self->rouse, &fiber->queue);
   if (need_async) {
+    TRACE("need async\n");
     /* interrupt the event loop (the sequence of these two calls matters) */
     uv_async_send(&self->async);
     /* make sure we loop at least once more */
@@ -121,6 +128,7 @@ int luvL_thread_once(luv_thread_t* self) {
             q = ngx_queue_head(&fiber->rouse);
             s = ngx_queue_data(q, luv_state_t, join);
             ngx_queue_remove(q);
+            TRACE("calling luvL_state_ready(%p)\n", s);
             luvL_state_ready(s);
             if (s->type == LUV_TFIBER) {
               lua_checkstack(fiber->L, 1);
@@ -150,8 +158,9 @@ int luvL_thread_loop(luv_thread_t* self) {
 }
 
 static void _async_cb(uv_async_t* handle, int status) {
+  TRACE("interrupt loop\n");
+  uv_unref((uv_handle_t*)handle);
   (void)status;
-  (void)handle;
 }
 
 void luvL_thread_init_main(lua_State* L) {
@@ -184,6 +193,10 @@ void luvL_thread_init_main(lua_State* L) {
 
 static void _thread_enter(void* arg) {
   luv_thread_t* self = (luv_thread_t*)arg;
+
+  luvL_codec_decode(self->L);
+  lua_remove(self->L, 1);
+
   luaL_checktype(self->L, 1, LUA_TFUNCTION);
   lua_pushcfunction(self->L, luvL_traceback);
   lua_insert(self->L, 1);
@@ -195,6 +208,8 @@ static void _thread_enter(void* arg) {
   if (rv) { /* error */
     lua_pushboolean(self->L, 0);
     lua_insert(self->L, 1);
+    luvL_thread_ready(self);
+    luaL_error(self->L, lua_tostring(self->L, -1));
   }
   else {
     lua_pushboolean(self->L, 1);
@@ -231,9 +246,8 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   uv_unref((uv_handle_t*)&self->async);
 
   luaL_openlibs(self->L);
-
-  /* open luv in the child thread */
   luaopen_luv(self->L);
+
   lua_settop(self->L, 0);
 
   TRACE("BEFORE ENCODE TOP: %i, narg: %i\n", lua_gettop(L), narg);
@@ -242,8 +256,6 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
 
   luaL_checktype(L, -1, LUA_TSTRING);
   lua_xmove(L, self->L, 1);
-  luvL_codec_decode(self->L);
-  lua_remove(self->L, 1);
 
   /* keep a reference for reverse lookup in child */
   lua_pushthread(self->L);
@@ -253,7 +265,7 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   uv_thread_create(&self->tid, _thread_enter, self);
 
   /* inserted udata below function, so now just udata on top */
-  TRACE("HERE TOP: %i\n", lua_gettop(L));
+  TRACE("HERE TOP: %i, base: %i\n", lua_gettop(L), base);
   lua_settop(L, base - 1);
   return self;
 }

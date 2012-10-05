@@ -6,6 +6,7 @@ int luvL_cond_init(luv_cond_t* cond) {
 }
 int luvL_cond_wait(luv_cond_t* cond, luv_state_t* curr) {
   ngx_queue_insert_tail(cond, &curr->cond);
+  TRACE("SUSPEND state %p\n", curr);
   return luvL_state_suspend(curr);
 }
 int luvL_cond_signal(luv_cond_t* cond) {
@@ -15,6 +16,7 @@ int luvL_cond_signal(luv_cond_t* cond) {
     q = ngx_queue_head(cond);
     s = ngx_queue_data(q, luv_state_t, cond);
     ngx_queue_remove(q);
+    TRACE("READY state %p\n", s);
     luvL_state_ready(s);
     return 1;
   }
@@ -28,6 +30,7 @@ int luvL_cond_broadcast(luv_cond_t* cond) {
     q = ngx_queue_head(cond);
     s = ngx_queue_data(q, luv_state_t, cond);
     ngx_queue_remove(q);
+    TRACE("READY state %p\n", s);
     luvL_state_ready(s);
     ++roused;
   }

@@ -15,7 +15,7 @@ LDFLAGS=-lm -ldl -lpthread
 AR = ar
 
 ifeq ($(OS_NAME), Darwin)
-LDFLAGS+=-bundle -undefined dynamic_lookup
+LDFLAGS+=-bundle -undefined dynamic_lookup -framework CoreServices
 ifeq ($(MH_NAME), x86_64)
 endif
 else
