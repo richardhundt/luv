@@ -150,6 +150,8 @@ union luv_any_state {
 #define LUV_OCLOSING (1 << 2)
 #define LUV_OCLOSED  (1 << 3)
 
+#define LUV_ZDIRTY   (1 << 4)
+
 #define luvL_object_is_started(O) ((O)->flags & LUV_OSTARTED)
 #define luvL_object_is_stopped(O) ((O)->flags & LUV_OSTOPPED)
 #define luvL_object_is_closing(O) ((O)->flags & LUV_OCLOSING)
@@ -158,6 +160,7 @@ union luv_any_state {
 #define LUV_OBJECT_FIELDS \
   ngx_queue_t   rouse; \
   ngx_queue_t   queue; \
+  luv_handle_t  h;     \
   luv_state_t*  state; \
   int           flags; \
   int           type;  \
@@ -166,9 +169,25 @@ union luv_any_state {
 
 typedef struct luv_object_s {
   LUV_OBJECT_FIELDS;
-  luv_handle_t  h;
   uv_buf_t      buf;
 } luv_object_t;
+
+typedef struct luv_zmqctx_s luv_zmqctx_t;
+
+typedef struct luv_zmqobj_s {
+  LUV_OBJECT_FIELDS;
+  int           poll;
+  ngx_queue_t   wsend;
+  ngx_queue_t   wrecv;
+  luv_zmqctx_t* ctx;
+} luv_zmqobj_t;
+
+struct luv_zmqctx_s {
+  LUV_OBJECT_FIELDS;
+  zmq_pollitem_t* items;
+  uv_check_t      check;
+  luv_zmqobj_t**  socks;
+};
 
 typedef struct luv_chan_s {
   LUV_OBJECT_FIELDS;
@@ -183,6 +202,8 @@ typedef struct luv_actor_s {
 
 union luv_any_object {
   luv_object_t object;
+  luv_zmqobj_t zmqobj;
+  luv_zmqctx_t zmqctx;
   luv_chan_t   chan;
   luv_actor_t  actor;
 };

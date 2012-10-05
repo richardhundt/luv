@@ -249,11 +249,7 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   luaopen_luv(self->L);
 
   lua_settop(self->L, 0);
-
-  TRACE("BEFORE ENCODE TOP: %i, narg: %i\n", lua_gettop(L), narg);
   luvL_codec_encode(L, narg);
-  TRACE("AFTER ENCODE TOP: %i\n", lua_gettop(L));
-
   luaL_checktype(L, -1, LUA_TSTRING);
   lua_xmove(L, self->L, 1);
 
