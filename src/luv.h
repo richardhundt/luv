@@ -6,9 +6,17 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
+
+#ifdef __cplusplus
+}
+#endif
 
 #include "uv/include/uv.h"
 #include "ngx-queue.h"
@@ -255,42 +263,58 @@ typedef struct luv_const_reg_s {
   int           val;
 } luv_const_reg_t;
 
-luaL_Reg luv_thread_funcs[32];
-luaL_Reg luv_thread_meths[32];
+extern luaL_Reg luv_thread_funcs[32];
+extern luaL_Reg luv_thread_meths[32];
 
-luaL_Reg luv_fiber_funcs[32];
-luaL_Reg luv_fiber_meths[32];
+extern luaL_Reg luv_fiber_funcs[32];
+extern luaL_Reg luv_fiber_meths[32];
 
-luaL_Reg luv_cond_funcs[32];
-luaL_Reg luv_cond_meths[32];
+extern luaL_Reg luv_cond_funcs[32];
+extern luaL_Reg luv_cond_meths[32];
 
-luaL_Reg luv_codec_funcs[32];
+extern luaL_Reg luv_codec_funcs[32];
 
-luaL_Reg luv_timer_funcs[32];
-luaL_Reg luv_timer_meths[32];
+extern luaL_Reg luv_timer_funcs[32];
+extern luaL_Reg luv_timer_meths[32];
 
-luaL_Reg luv_fs_funcs[32];
-luaL_Reg luv_file_meths[32];
+extern luaL_Reg luv_fs_funcs[32];
+extern luaL_Reg luv_file_meths[32];
 
-luaL_Reg luv_stream_meths[32];
+extern luaL_Reg luv_stream_meths[32];
 
-luaL_Reg luv_net_funcs[32];
-luaL_Reg luv_net_tcp_meths[32];
-luaL_Reg luv_net_udp_meths[32];
+extern luaL_Reg luv_net_funcs[32];
+extern luaL_Reg luv_net_tcp_meths[32];
+extern luaL_Reg luv_net_udp_meths[32];
 
-luaL_Reg luv_pipe_funcs[32];
-luaL_Reg luv_pipe_meths[32];
+extern luaL_Reg luv_pipe_funcs[32];
+extern luaL_Reg luv_pipe_meths[32];
 
-luaL_Reg luv_process_funcs[32];
-luaL_Reg luv_process_meths[32];
+extern luaL_Reg luv_process_funcs[32];
+extern luaL_Reg luv_process_meths[32];
 
-luaL_Reg luv_zmq_funcs[32];
-luaL_Reg luv_zmq_ctx_meths[32];
-luaL_Reg luv_zmq_socket_meths[32];
+extern luaL_Reg luv_zmq_funcs[32];
+extern luaL_Reg luv_zmq_ctx_meths[32];
+extern luaL_Reg luv_zmq_socket_meths[32];
 
+#ifdef WIN32
+#  ifdef LUV_EXPORT
+#    define LUALIB_API __declspec(dllexport)
+#  else 
+#    define LUALIB_API __declspec(dllimport)
+#  endif
+#else 
+#  define LUALIB_API LUA_API
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 LUALIB_API int luaopen_luv(lua_State *L);
 
+#ifdef __cplusplus
+}
+#endif
 
 #define container_of(ptr, type, member) \
   ((type*) ((char*)(ptr) - offsetof(type, member)))

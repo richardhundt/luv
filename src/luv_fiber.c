@@ -51,7 +51,7 @@ luv_fiber_t* luvL_fiber_create(luv_state_t* outer, int narg) {
   lua_checkstack(L1, narg);
   lua_xmove(L, L1, narg);                          /* [thread] */
 
-  self = lua_newuserdata(L, sizeof(luv_fiber_t));  /* [thread, fiber] */
+  self = (luv_fiber_t*)lua_newuserdata(L, sizeof(luv_fiber_t));
   luaL_getmetatable(L, LUV_FIBER_T);               /* [thread, fiber, meta] */
   lua_setmetatable(L, -2);                         /* [thread, fiber] */
 
@@ -96,8 +96,8 @@ int luvL_state_xcopy(luv_state_t* a, luv_state_t* b) {
 }
 
 static int luv_fiber_join(lua_State* L) {
-  luv_fiber_t* self = luaL_checkudata(L, 1, LUV_FIBER_T);
-  luv_state_t* curr = luvL_state_self(L);
+  luv_fiber_t* self = (luv_fiber_t*)luaL_checkudata(L, 1, LUV_FIBER_T);
+  luv_state_t* curr = (luv_state_t*)luvL_state_self(L);
   TRACE("joining fiber[%p], from [%p]\n", self, curr);
   assert((luv_state_t*)self != curr);
   if (self->flags & LUV_FDEAD) {
@@ -118,17 +118,17 @@ static int luv_fiber_join(lua_State* L) {
 }
 
 static int luv_fiber_ready(lua_State* L) {
-  luv_fiber_t* self = lua_touserdata(L, 1);
+  luv_fiber_t* self = (luv_fiber_t*)lua_touserdata(L, 1);
   luvL_fiber_ready(self);
   return 1;
 }
 static int luv_fiber_free(lua_State* L) {
-  luv_fiber_t* self = lua_touserdata(L, 1);
+  luv_fiber_t* self = (luv_fiber_t*)lua_touserdata(L, 1);
   if (self->data) free(self->data);
   return 1;
 }
 static int luv_fiber_tostring(lua_State* L) {
-  luv_fiber_t* self = lua_touserdata(L, 1);
+  luv_fiber_t* self = (luv_fiber_t*)lua_touserdata(L, 1);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_FIBER_T, self);
   return 1;
 }

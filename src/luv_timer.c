@@ -14,7 +14,7 @@ static void _timer_cb(uv_timer_t* handle, int status) {
 }
 
 static int luv_new_timer(lua_State* L) {
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_TIMER_T);
   lua_setmetatable(L, -2);
 
@@ -27,7 +27,7 @@ static int luv_new_timer(lua_State* L) {
 
 /* methods */
 static int luv_timer_start(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_TIMER_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
   int64_t timeout = luaL_optlong(L, 2, 0L);
   int64_t repeat  = luaL_optlong(L, 3, 0L);
   int rv = uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
@@ -36,30 +36,30 @@ static int luv_timer_start(lua_State* L) {
 }
 
 static int luv_timer_again(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_TIMER_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
   lua_pushinteger(L, uv_timer_again(&self->h.timer));
   return 1;
 }
 
 static int luv_timer_stop(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_TIMER_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
   lua_pushinteger(L, uv_timer_stop(&self->h.timer));
   return 1;
 }
 
 static int luv_timer_next(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_TIMER_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
   luv_state_t* state = luvL_state_self(L);
   return luvL_cond_wait(&self->rouse, state);
 }
 
 static int luv_timer_free(lua_State *L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luvL_object_close(self);
   return 1;
 }
 static int luv_timer_tostring(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_TIMER_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_TIMER_T, self);
   return 1;
 }

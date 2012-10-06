@@ -19,8 +19,8 @@ static int decode_table(lua_State* L, luv_buf_t* buf, int seen);
 
 luv_buf_t* luvL_buf_new(size_t size) {
   if (!size) size = 128;
-  luv_buf_t* buf = malloc(sizeof(luv_buf_t));
-  buf->base = malloc(size);
+  luv_buf_t* buf = (luv_buf_t*)malloc(sizeof(luv_buf_t));
+  buf->base = (uint8_t*)malloc(size);
   buf->size = size;
   buf->head = buf->base;
   return buf;
@@ -37,7 +37,7 @@ void luvL_buf_need(luv_buf_t* buf, size_t len) {
   size_t size = buf->size;
   if (!size) {
     size = 128;
-    buf->base = malloc(size);
+    buf->base = (uint8_t*)malloc(size);
     buf->size = size;
     buf->head = buf->base;
   }
@@ -45,7 +45,7 @@ void luvL_buf_need(luv_buf_t* buf, size_t len) {
   ptrdiff_t need = head + len;
   while (size < need) size *= 2;
   if (size > buf->size) {
-    buf->base = realloc(buf->base, size);
+    buf->base = (uint8_t*)realloc(buf->base, size);
     buf->size = size;
     buf->head = buf->base + head;
   }
@@ -194,7 +194,7 @@ static void encode_value(lua_State* L, luv_buf_t* buf, int val, int seen) {
     }
     else {
       int i;
-      luv_buf_t b = { .base = NULL, .head = NULL, .size = 0 };
+      luv_buf_t b; b.base = NULL; b.head = NULL; b.size = 0;
       lua_Debug ar;
 
       lua_pop(L, 1); /* pop nil */
@@ -416,7 +416,7 @@ static int decode_table(lua_State* L, luv_buf_t* buf, int seen) {
 
 int luvL_codec_encode(lua_State* L, int narg) {
   int i, base, seen;
-  luv_buf_t buf = { .base = NULL, .head = NULL, .size = 0 };
+  luv_buf_t buf; buf.base = NULL; buf.head = NULL; buf.size = 0;
 
   base = lua_gettop(L) - narg + 1;
 
@@ -444,7 +444,7 @@ int luvL_codec_decode(lua_State* L) {
   int nval, seen, i;
   int top = lua_gettop(L);
 
-  luv_buf_t buf = { .base = NULL, .head = NULL, .size = 0 };
+  luv_buf_t buf; buf.base = NULL; buf.head = NULL; buf.size = 0;
 
   const char* data = luaL_checklstring(L, 1, &len);
   luvL_buf_init(&buf, (uint8_t*)data, len);

@@ -45,7 +45,7 @@ int luvL_zmq_socket_recv(luv_object_t* self, luv_state_t* state) {
     void* data = zmq_msg_data(&msg);
     size_t len = zmq_msg_size(&msg);
     lua_settop(state->L, 0);
-    lua_pushlstring(state->L, data, len);
+    lua_pushlstring(state->L, (const char*)data, len);
     zmq_msg_close(&msg);
   }
   return rv;
@@ -118,7 +118,7 @@ static int luv_new_zmq(lua_State* L) {
   luv_thread_t* thread = luvL_thread_self(L);
   int nthreads = luaL_optinteger(L, 2, 1);
 
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_ZMQ_CTX_T);
   lua_setmetatable(L, -2);
 
@@ -132,11 +132,11 @@ static int luv_new_zmq(lua_State* L) {
 
 /* socket methods */
 static int luv_zmq_ctx_socket(lua_State* L) {
-  luv_object_t* ctx = lua_touserdata(L, 1);
+  luv_object_t* ctx = (luv_object_t*)lua_touserdata(L, 1);
   int type = luaL_checkint(L, 2);
 
   luv_state_t*  curr = luvL_state_self(L);
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_ZMQ_SOCKET_T);
   lua_setmetatable(L, -2);
 
@@ -155,7 +155,7 @@ static int luv_zmq_ctx_socket(lua_State* L) {
 }
 
 static int luv_zmq_socket_bind(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   const char*   addr = luaL_checkstring(L, 2);
   /* XXX: make this async? */
   int rv = zmq_bind(self->data, addr);
@@ -163,7 +163,7 @@ static int luv_zmq_socket_bind(lua_State* L) {
   return 1;
 }
 static int luv_zmq_socket_connect(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   const char*   addr = luaL_checkstring(L, 2);
   /* XXX: make this async? */
   int rv = zmq_connect(self->data, addr);
@@ -172,7 +172,7 @@ static int luv_zmq_socket_connect(lua_State* L) {
 }
 
 static int luv_zmq_socket_send(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   luv_state_t*  curr = luvL_state_self(L);
   int rv = luvL_zmq_socket_send(self, curr);
   if (rv < 0) {
@@ -191,7 +191,7 @@ static int luv_zmq_socket_send(lua_State* L) {
   return 2;
 }
 static int luv_zmq_socket_recv(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   luv_state_t*  curr = luvL_state_self(L);
   int rv = luvL_zmq_socket_recv(self, curr);
   if (rv < 0) {
@@ -212,7 +212,7 @@ static int luv_zmq_socket_recv(lua_State* L) {
 }
 
 static int luv_zmq_socket_close(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   if (!luvL_object_is_closing(self)) {
     if (zmq_close(self->data)) {
       /* TODO: linger and error handling */
@@ -267,7 +267,7 @@ static const char* LUV_ZMQ_SOCKOPTS[] = {
 };
 
 static int luv_zmq_socket_setsockopt(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   int opt, rv;
   if (lua_isstring(L, 2)) {
     opt = luaL_checkoption(L, 2, NULL, LUV_ZMQ_SOCKOPTS);
@@ -350,7 +350,7 @@ static int luv_zmq_socket_setsockopt(lua_State* L) {
   return 1;
 }
 static int luv_zmq_socket_getsockopt(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   size_t len;
   int opt;
   if (lua_isstring(L, 2)) {
@@ -433,7 +433,7 @@ static int luv_zmq_socket_getsockopt(lua_State* L) {
       zmq_getsockopt(self->data, ZMQ_FD, &socket, &len);
       /* TODO: give these a metatable */
 #ifdef _WIN32
-      luv_boxpointer(L, socket);
+      luv_boxpointer(L, (uv_os_sock_t)socket);
 #else
       luv_boxinteger(L, socket);
 #endif
@@ -450,12 +450,12 @@ static int luv_zmq_socket_getsockopt(lua_State* L) {
 }
 
 static int luv_zmq_socket_tostring(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_ZMQ_SOCKET_T, self);
   return 1;
 }
 static int luv_zmq_socket_free(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   if (!luvL_object_is_closing(self)) {
     zmq_close(self->data);
     uv_poll_stop(&self->h.poll);
@@ -465,7 +465,7 @@ static int luv_zmq_socket_free(lua_State* L) {
 }
 
 static int luv_zmq_ctx_encoder(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_CTX_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_CTX_T);
   lua_pushstring(L, "luv:zmq:decoder");
   lua_pushlightuserdata(L, self->data);
   return 2;
@@ -476,7 +476,7 @@ int luvL_zmq_ctx_decoder(lua_State* L) {
   luv_state_t*  curr = luvL_state_self(L);
   luaL_checktype(L, -1, LUA_TLIGHTUSERDATA);
 
-  luv_object_t* copy = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* copy = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_ZMQ_CTX_T);
   lua_setmetatable(L, -2);
 
@@ -489,12 +489,12 @@ int luvL_zmq_ctx_decoder(lua_State* L) {
 }
 
 static int luv_zmq_ctx_tostring(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_ZMQ_CTX_T, self);
   return 1;
 }
 static int luv_zmq_ctx_free(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_ZMQ_CTX_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_CTX_T);
   if (!(self->flags & LUV_ZMQ_XDUPCTX)) {
     zmq_ctx_destroy(self->data);
   }

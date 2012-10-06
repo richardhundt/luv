@@ -164,7 +164,7 @@ static void _async_cb(uv_async_t* handle, int status) {
 }
 
 void luvL_thread_init_main(lua_State* L) {
-  luv_thread_t* self = lua_newuserdata(L, sizeof(luv_thread_t));
+  luv_thread_t* self = (luv_thread_t*)lua_newuserdata(L, sizeof(luv_thread_t));
   luaL_getmetatable(L, LUV_THREAD_T);
   lua_setmetatable(L, -2);
 
@@ -226,7 +226,7 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   /* ..., func, arg1, ..., argN */
   base = lua_gettop(L) - narg + 1;
 
-  luv_thread_t* self = lua_newuserdata(L, sizeof(luv_thread_t));
+  luv_thread_t* self = (luv_thread_t*)lua_newuserdata(L, sizeof(luv_thread_t));
   luaL_getmetatable(L, LUV_THREAD_T);
   lua_setmetatable(L, -2);
   lua_insert(L, base++);
@@ -278,7 +278,7 @@ static int luv_new_thread(lua_State* L) {
   return 1;
 }
 static int luv_thread_join(lua_State* L) {
-  luv_thread_t* self = luaL_checkudata(L, 1, LUV_THREAD_T);
+  luv_thread_t* self = (luv_thread_t*)luaL_checkudata(L, 1, LUV_THREAD_T);
   luv_thread_t* curr = luvL_thread_self(L);
 
   luvL_thread_ready(self);
@@ -300,7 +300,7 @@ static int luv_thread_free(lua_State* L) {
   return 1;
 }
 static int luv_thread_tostring(lua_State* L) {
-  luv_thread_t* self = luaL_checkudata(L, 1, LUV_THREAD_T);
+  luv_thread_t* self = (luv_thread_t*)luaL_checkudata(L, 1, LUV_THREAD_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_THREAD_T, self);
   return 1;
 }

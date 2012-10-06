@@ -2,7 +2,7 @@
 
 /* used by udp and stream */
 uv_buf_t luvL_alloc_cb(uv_handle_t* handle, size_t size) {
-  return uv_buf_init(malloc(size), size);
+  return uv_buf_init((char*)malloc(size), size);
 }
 
 /* used by tcp and pipe */
@@ -72,7 +72,7 @@ static void _listen_cb(uv_stream_t* server, int status) {
   luv_object_t* self = container_of(server, luv_object_t, h);
   if (luvL_object_is_waiting(self)) {
     lua_State* L = self->state->L;
-    luv_object_t* conn = lua_touserdata(L, 2);
+    luv_object_t* conn = (luv_object_t*)lua_touserdata(L, 2);
     int rv = uv_accept(&self->h.stream, &conn->h.stream);
     if (rv) {
       uv_err_t err = uv_last_error(self->h.stream.loop);
@@ -90,7 +90,7 @@ static void _listen_cb(uv_stream_t* server, int status) {
 
 static int luv_stream_listen(lua_State* L) {
   luaL_checktype(L, 1, LUA_TUSERDATA);
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   int backlog = luaL_optinteger(L, 2, 128);
   if (uv_listen(&self->h.stream, backlog, _listen_cb)) {
     uv_err_t err = uv_last_error(self->h.stream.loop);
@@ -101,8 +101,8 @@ static int luv_stream_listen(lua_State* L) {
 
 static int luv_stream_accept(lua_State *L) {
   luaL_checktype(L, 1, LUA_TUSERDATA);
-  luv_object_t* self = lua_touserdata(L, 1);
-  luv_object_t* conn = lua_touserdata(L, 2);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
+  luv_object_t* conn = (luv_object_t*)lua_touserdata(L, 2);
 
   luv_state_t* curr = luvL_state_self(L);
   if (self->count) {
@@ -136,7 +136,7 @@ int luvL_stream_start(luv_object_t* self) {
 } while (0)
 
 static int luv_stream_start(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   if (!luvL_object_is_started(self)) {
     if (luvL_stream_start(self)) {
       STREAM_ERROR(L, "read start: %s", luvL_event_loop(L));
@@ -148,7 +148,7 @@ static int luv_stream_start(lua_State* L) {
 }
 
 static int luv_stream_read(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luv_state_t*  curr = luvL_state_self(L);
   if (luvL_object_is_closing(self)) {
     return luaL_error(L, "attempt to read from a closed stream");
@@ -161,7 +161,7 @@ static int luv_stream_read(lua_State* L) {
 }
 
 static int luv_stream_write(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
 
   size_t len;
   const char* chunk = luaL_checklstring(L, 2, &len);
@@ -180,26 +180,26 @@ static int luv_stream_write(lua_State* L) {
 }
 
 static int luv_stream_shutdown(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luv_state_t*  curr = luvL_state_self(L);
   uv_shutdown(&curr->req.shutdown, &self->h.stream, _shutdown_cb);
   return luvL_cond_wait(&self->rouse, curr);
 }
 static int luv_stream_readable(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   lua_pushboolean(L, uv_is_readable(&self->h.stream));
   return 1;
 }
 
 static int luv_stream_writable(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   lua_pushboolean(L, uv_is_writable(&self->h.stream));
   return 1;
 }
 
 static int luv_stream_close(lua_State* L) {
   TRACE("close stream\n");
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   if (luvL_object_is_started(self)) {
     uv_read_stop((uv_stream_t*)&self->h.tcp);
   }
@@ -208,13 +208,13 @@ static int luv_stream_close(lua_State* L) {
 
 }
 static int luv_stream_free(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luvL_object_close(self);
   return 1;
 }
 
 static int luv_stream_tostring(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   lua_pushfstring(L, "userdata<luv.stream>: %p", self);
   return 1;
 }

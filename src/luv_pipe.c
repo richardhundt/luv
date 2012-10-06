@@ -1,7 +1,7 @@
 #include "luv.h"
 
 static int luv_new_pipe(lua_State* L) {
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_PIPE_T);
   lua_setmetatable(L, -2);
   int ipc = 0;
@@ -14,10 +14,10 @@ static int luv_new_pipe(lua_State* L) {
 }
 
 static int luv_pipe_open(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_PIPE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_PIPE_T);
   uv_file fh;
   if (lua_isuserdata(L, 2)) {
-    luv_object_t* file = luaL_checkudata(L, 2, LUV_FILE_T);
+    luv_object_t* file = (luv_object_t*)luaL_checkudata(L, 2, LUV_FILE_T);
     fh = file->h.file;
   }
   else {
@@ -28,7 +28,7 @@ static int luv_pipe_open(lua_State* L) {
 }
 
 static int luv_pipe_bind(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_PIPE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_PIPE_T);
   const char*   path = luaL_checkstring(L, 2);
 
   if (uv_pipe_bind(&self->h.pipe, path)) {
@@ -40,7 +40,7 @@ static int luv_pipe_bind(lua_State* L) {
 }
 
 static int luv_pipe_connect(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_PIPE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_PIPE_T);
   const char*   path = luaL_checkstring(L, 2);
   luv_state_t*  curr = luvL_state_self(L);
 
@@ -50,7 +50,7 @@ static int luv_pipe_connect(lua_State* L) {
 }
 
 static int luv_pipe_tostring(lua_State *L) {
-  luv_object_t *self = luaL_checkudata(L, 1, LUV_PIPE_T);
+  luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_PIPE_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_PIPE_T, self);
   return 1;
 }

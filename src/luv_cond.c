@@ -38,7 +38,7 @@ int luvL_cond_broadcast(luv_cond_t* cond) {
 }
 
 static int luv_new_cond(lua_State* L) {
-  luv_cond_t* cond = lua_newuserdata(L, sizeof(luv_cond_t));
+  luv_cond_t* cond = (luv_cond_t*)lua_newuserdata(L, sizeof(luv_cond_t));
 
   lua_pushvalue(L, 1);
   luaL_getmetatable(L, LUV_COND_T);
@@ -49,36 +49,36 @@ static int luv_new_cond(lua_State* L) {
 }
 
 static int luv_cond_wait(lua_State *L) {
-  luv_cond_t*  cond  = lua_touserdata(L, 1);
+  luv_cond_t*  cond  = (luv_cond_t*)lua_touserdata(L, 1);
   luv_state_t* curr;
   if (!lua_isnoneornil(L, 2)) {
-    curr = luaL_checkudata(L, 2, LUV_FIBER_T);
+    curr = (luv_state_t*)luaL_checkudata(L, 2, LUV_FIBER_T);
   }
   else {
-    curr = luvL_state_self(L);
+    curr = (luv_state_t*)luvL_state_self(L);
   }
   luvL_cond_wait(cond, curr);
   return 1;
 }
 static int luv_cond_signal(lua_State *L) {
-  luv_cond_t* cond = lua_touserdata(L, 1);
+  luv_cond_t* cond = (luv_cond_t*)lua_touserdata(L, 1);
   luvL_cond_signal(cond);
   return 1;
 }
 static int luv_cond_broadcast(lua_State *L) {
-  luv_cond_t* cond = lua_touserdata(L, 1);
+  luv_cond_t* cond = (luv_cond_t*)lua_touserdata(L, 1);
   luvL_cond_broadcast(cond);
   return 1;
 }
 
 static int luv_cond_free(lua_State *L) {
-  luv_cond_t* cond = lua_touserdata(L, 1);
+  luv_cond_t* cond = (luv_cond_t*)lua_touserdata(L, 1);
   (void)cond;
   return 0;
 }
 
 static int luv_cond_tostring(lua_State *L) {
-  luv_cond_t* cond = luaL_checkudata(L, 1, LUV_COND_T);
+  luv_cond_t* cond = (luv_cond_t*)luaL_checkudata(L, 1, LUV_COND_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_COND_T, cond);
   return 1;
 }

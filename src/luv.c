@@ -1,9 +1,18 @@
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
 
+#ifdef __cplusplus
+}
+#endif
+
+ 
 #include "luv.h"
 
 static int MAIN_INITIALIZED = 0;
@@ -172,6 +181,9 @@ static const luv_const_reg_t luv_zmq_consts[] = {
   {NULL,                0}
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 LUALIB_API int luaopen_luv(lua_State *L) {
   int i;
   uv_loop_t*    loop;
@@ -246,7 +258,7 @@ LUALIB_API int luaopen_luv(lua_State *L) {
 
     const char* stdfhs[] = { "stdin", "stdout", "stderr" };
     for (i = 0; i < 3; i++) {
-      stdfh = lua_newuserdata(L, sizeof(luv_object_t));
+      stdfh = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
       luaL_getmetatable(L, LUV_PIPE_T);
       lua_setmetatable(L, -2);
       luvL_object_init(curr, stdfh);
@@ -287,3 +299,6 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   return 1;
 }
 
+#ifdef __cplusplus
+}
+#endif

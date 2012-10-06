@@ -3,7 +3,7 @@
 
 static int luv_new_tcp(lua_State* L) {
   luv_state_t*  curr = luvL_state_self(L);
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_NET_TCP_T);
   lua_setmetatable(L, -2);
 
@@ -118,7 +118,7 @@ static int luv_getaddrinfo(lua_State* L) {
 }
 
 static int luv_tcp_bind(lua_State* L) {
-  luv_object_t *self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
 
   struct sockaddr_in addr;
   const char* host;
@@ -135,7 +135,7 @@ static int luv_tcp_bind(lua_State* L) {
 }
 
 static int luv_tcp_connect(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
   luv_state_t*  curr = luvL_state_self(L);
 
   struct sockaddr_in addr;
@@ -161,7 +161,7 @@ static int luv_tcp_connect(lua_State *L) {
 }
 
 static int luv_tcp_nodelay(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
   luaL_checktype(L, 2, LUA_TBOOLEAN);
   int enable = lua_toboolean(L, 2);
   lua_settop(L, 2);
@@ -170,7 +170,7 @@ static int luv_tcp_nodelay(lua_State* L) {
   return 1;
 }
 static int luv_tcp_keepalive(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
   luaL_checktype(L, 2, LUA_TBOOLEAN);
   int enable = lua_toboolean(L, 2);
   unsigned int delay = 0;
@@ -185,7 +185,7 @@ static int luv_tcp_keepalive(lua_State* L) {
 
 /* mostly stolen from Luvit */
 static int luv_tcp_getsockname(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
 
   int port = 0;
   char ip[INET6_ADDRSTRLEN];
@@ -224,7 +224,7 @@ static int luv_tcp_getsockname(lua_State* L) {
 
 /* mostly stolen from Luvit */
 static int luv_tcp_getpeername(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
 
   int port = 0;
   char ip[INET6_ADDRSTRLEN];
@@ -262,19 +262,19 @@ static int luv_tcp_getpeername(lua_State* L) {
 }
 
 static int luv_tcp_free(lua_State *L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luvL_object_close(self);
   return 0;
 }
 static int luv_tcp_tostring(lua_State *L) {
-  luv_object_t *self = luaL_checkudata(L, 1, LUV_NET_TCP_T);
+  luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_NET_TCP_T, self);
   return 1;
 }
 
 static int luv_new_udp(lua_State* L) {
   luv_state_t*  curr = luvL_state_self(L);
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_NET_UDP_T);
   lua_setmetatable(L, -2);
   luvL_object_init(curr, self);
@@ -284,7 +284,7 @@ static int luv_new_udp(lua_State* L) {
 }
 
 static int luv_udp_bind(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_UDP_T);
   const char*   host = luaL_checkstring(L, 2);
   int           port = luaL_checkint(L, 3);
 
@@ -306,7 +306,7 @@ static void _send_cb(uv_udp_send_t* req, int status) {
 }
 
 static int luv_udp_send(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_UDP_T);
   luv_state_t*  curr = luvL_state_self(L);
 
   size_t len;
@@ -360,7 +360,7 @@ static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct socka
 }
 
 static int luv_udp_recv(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_UDP_T);
   if (!luvL_object_is_started(self)) {
     self->flags |= LUV_OSTARTED;
     uv_udp_recv_start(&self->h.udp, luvL_alloc_cb, _recv_cb);
@@ -371,7 +371,7 @@ static int luv_udp_recv(lua_State* L) {
 static const char* LUV_UDP_MEMBERSHIP_OPTS[] = { "join", "leave", NULL };
 
 int luv_udp_membership(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_UDP_T);
   const char*  iaddr = luaL_checkstring(L, 3);
   const char*  maddr = luaL_checkstring(L, 2);
 
@@ -387,12 +387,12 @@ int luv_udp_membership(lua_State* L) {
 }
 
 static int luv_udp_free(lua_State *L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luvL_object_close(self);
   return 0;
 }
 static int luv_udp_tostring(lua_State *L) {
-  luv_object_t *self = luaL_checkudata(L, 1, LUV_NET_UDP_T);
+  luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_UDP_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_NET_UDP_T, self);
   return 1;
 }

@@ -106,7 +106,7 @@ static void luv_fs_result(lua_State* L, uv_fs_t* req) {
       case UV_FS_OPEN:
         {
           TRACE("OPEN, stack: %i, type[-1]: %s\n", lua_gettop(L), lua_typename(L, lua_type(L, -1)));
-          luv_object_t* self = luaL_checkudata(L, -1, LUV_FILE_T);
+          luv_object_t* self = (luv_object_t*)luaL_checkudata(L, -1, LUV_FILE_T);
           TRACE("self: %p\n", self);
           self->h.file = req->result;
         }
@@ -114,7 +114,7 @@ static void luv_fs_result(lua_State* L, uv_fs_t* req) {
 
       case UV_FS_READ:
         lua_pushinteger(L, req->result);
-        lua_pushlstring(L, req->data, req->result);
+        lua_pushlstring(L, (const char*)req->data, req->result);
         free(req->data);
         req->data = NULL;
         break;
@@ -201,7 +201,7 @@ static int luv_fs_open(lua_State* L) {
 
   lua_settop(L, 0);
 
-  self = lua_newuserdata(L, sizeof(luv_object_t));
+  self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_FILE_T);
   lua_setmetatable(L, -2);
   luvL_object_init(curr, self);
@@ -249,8 +249,8 @@ static int luv_fs_rename(lua_State* L) {
 }
 
 static int luv_fs_sendfile(lua_State* L) {
-  luv_object_t* o_file = luaL_checkudata(L, 1, LUV_FILE_T);
-  luv_object_t* i_file = luaL_checkudata(L, 2, LUV_FILE_T);
+  luv_object_t* o_file = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* i_file = (luv_object_t*)luaL_checkudata(L, 2, LUV_FILE_T);
   off_t  ofs = luaL_checkint(L, 3);
   size_t len = luaL_checkint(L, 4);
   lua_settop(L, 2);
@@ -337,32 +337,32 @@ static int luv_fs_exepath(lua_State* L) {
 
 /* file instance methods */
 static int luv_file_stat(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   lua_settop(L, 0);
   LUV_FS_CALL(L, fstat, NULL, self->h.file);
 }
 
 static int luv_file_sync(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   lua_settop(L, 0);
   LUV_FS_CALL(L, fsync, NULL, self->h.file);
 }
 
 static int luv_file_datasync(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   lua_settop(L, 0);
   LUV_FS_CALL(L, fdatasync, NULL, self->h.file);
 }
 
 static int luv_file_truncate(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   off_t ofs = luaL_checkint(L, 2);
   lua_settop(L, 0);
   LUV_FS_CALL(L, ftruncate, NULL, self->h.file, ofs);
 }
 
 static int luv_file_utime(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   double atime = luaL_checknumber(L, 2);
   double mtime = luaL_checknumber(L, 3);
   lua_settop(L, 0);
@@ -370,14 +370,14 @@ static int luv_file_utime(lua_State* L) {
 }
 
 static int luv_file_chmod(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   int mode = strtoul(luaL_checkstring(L, 2), NULL, 8);
   lua_settop(L, 0);
   LUV_FS_CALL(L, fchmod, NULL, self->h.file, mode);
 }
 
 static int luv_file_chown(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   int uid = luaL_checkint(L, 2);
   int gid = luaL_checkint(L, 3);
   lua_settop(L, 0);
@@ -385,7 +385,7 @@ static int luv_file_chown(lua_State* L) {
 }
 
 static int luv_file_read(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
 
   size_t  len = luaL_optint(L, 2, LUV_BUF_SIZE);
   int64_t ofs = luaL_optint(L, 3, -1);
@@ -396,7 +396,7 @@ static int luv_file_read(lua_State *L) {
 }
 
 static int luv_file_write(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
 
   size_t   len;
   void*    buf = (void*)luaL_checklstring(L, 2, &len);
@@ -407,19 +407,19 @@ static int luv_file_write(lua_State *L) {
 }
 
 static int luv_file_close(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   lua_settop(L, 0);
   LUV_FS_CALL(L, close, NULL, self->h.file);
 }
 
 static int luv_file_free(lua_State *L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   if (self->data) free(self->data);
   return 0;
 }
 
 static int luv_file_tostring(lua_State *L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_FILE_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_FILE_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_FILE_T, self);
   return 1;
 }

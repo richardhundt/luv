@@ -10,7 +10,7 @@ int luvL_state_in_thread(luv_state_t* state) {
 luv_state_t* luvL_state_self(lua_State* L) {
   lua_pushthread(L);
   lua_rawget(L, LUA_REGISTRYINDEX);
-  luv_state_t* self = lua_touserdata(L, -1);
+  luv_state_t* self = (luv_state_t*)lua_touserdata(L, -1);
   lua_pop(L, 1);
   return self;
 }

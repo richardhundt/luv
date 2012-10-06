@@ -41,7 +41,7 @@ static int luv_new_process(lua_State* L) {
   memset(&opts, 0, sizeof(uv_process_options_t));
 
   argc = lua_objlen(L, 2);
-  args = malloc((argc + 1) * sizeof(char*));
+  args = (char**)malloc((argc + 1) * sizeof(char*));
   args[0] = (char*)cmd;
   for (i = 1; i <= argc; i++) {
     lua_rawgeti(L, -1, i);
@@ -65,14 +65,14 @@ static int luv_new_process(lua_State* L) {
     const char* key;
     const char* val;
     len = 32;
-    env = malloc(32 * sizeof(char*));
+    env = (char**)malloc(32 * sizeof(char*));
 
     lua_pushnil(L);
     i = 0;
     while (lua_next(L, -2) != 0) {
       if (i >= len) {
         len *= 2;
-        env = realloc(env, len * sizeof(char*));
+        env = (char**)realloc(env, len * sizeof(char*));
       }
       key = lua_tostring(L, -2);
       val = lua_tostring(L, -1);
@@ -101,7 +101,7 @@ static int luv_new_process(lua_State* L) {
       stdio[i].flags = UV_IGNORE;
     }
     else {
-      luv_object_t* obj = luaL_checkudata(L, -1, LUV_PIPE_T);
+      luv_object_t* obj = (luv_object_t*)luaL_checkudata(L, -1, LUV_PIPE_T);
       stdio[i].flags = UV_INHERIT_STREAM;
       stdio[i].data.stream = &obj->h.stream;
     }
@@ -121,7 +121,7 @@ static int luv_new_process(lua_State* L) {
 
   luv_state_t*  curr = luvL_state_self(L);
 
-  luv_object_t* self = lua_newuserdata(L, sizeof(luv_object_t));
+  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
   luaL_getmetatable(L, LUV_PROCESS_T);
   lua_setmetatable(L, -2);
 
@@ -149,7 +149,7 @@ static int luv_new_process(lua_State* L) {
 }
 
 static int luv_process_kill(lua_State* L) {
-  luv_object_t* self = luaL_checkudata(L, 1, LUV_PROCESS_T);
+  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_PROCESS_T);
   int signum = luaL_checkint(L, 2);
 
   if (uv_process_kill(&self->h.process, signum)) {
@@ -161,12 +161,12 @@ static int luv_process_kill(lua_State* L) {
 }
 
 static int luv_process_free(lua_State* L) {
-  luv_object_t* self = lua_touserdata(L, 1);
+  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luvL_object_close(self);
   return 0;
 }
 static int luv_process_tostring(lua_State* L) {
-  luv_object_t *self = luaL_checkudata(L, 1, LUV_PROCESS_T);
+  luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_PROCESS_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_PROCESS_T, self);
   return 1;
 }
