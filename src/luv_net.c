@@ -16,7 +16,7 @@ static int luv_new_tcp(lua_State* L) {
 static void _getaddrinfo_cb(uv_getaddrinfo_t* req, int s, struct addrinfo* ai) {
   luv_state_t* curr = container_of(req, luv_state_t, req);
   char host[INET6_ADDRSTRLEN];
-  int  port;
+  int  port = 0;
 
   if (ai->ai_family == PF_INET) {
     struct sockaddr_in* addr = (struct sockaddr_in*)ai->ai_addr;
@@ -333,7 +333,7 @@ static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct socka
   luv_state_t* s;
 
   char host[INET6_ADDRSTRLEN];
-  int  port;
+  int  port = 0;
 
   ngx_queue_foreach(q, &self->rouse) {
     s = ngx_queue_data(q, luv_state_t, cond);

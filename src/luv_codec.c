@@ -253,7 +253,6 @@ static void encode_value(lua_State* L, luv_buf_t* buf, int val, int seen) {
 }
 
 static int encode_table(lua_State* L, luv_buf_t* buf, int seen) {
-  int top = lua_gettop(L);
   lua_pushnil(L);
   while (lua_next(L, -2) != 0) {
     int top = lua_gettop(L);
@@ -268,7 +267,6 @@ static int encode_table(lua_State* L, luv_buf_t* buf, int seen) {
   encode_value(L, buf, -1, seen);
   lua_pop(L, 1);
 
-  top = lua_gettop(L);
   return 1;
 }
 

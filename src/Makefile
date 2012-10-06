@@ -53,7 +53,7 @@ $(OBJS) :
 
 libs: ./zmq/Makefile
 	$(MAKE) CFLAGS="-fPIC" -C ./uv
-	$(MAKE) -C ./zmq
+	$(MAKE) CXXFLAGS="-fPIC" -C ./zmq
 
 ./zmq/Makefile:
 	cd ./zmq && ./autogen.sh && ./configure
