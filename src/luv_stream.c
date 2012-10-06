@@ -127,6 +127,14 @@ int luvL_stream_start(luv_object_t* self) {
   }
   return 0;
 }
+int luvL_stream_stop(luv_object_t* self) {
+  if (luvL_object_is_started(self)) {
+    self->flags &= ~LUV_OSTARTED;
+    return uv_read_stop(&self->h.stream);
+  }
+  return 0;
+}
+
 
 #define STREAM_ERROR(L,fmt,loop) do { \
   uv_err_t err = uv_last_error(loop); \
@@ -181,9 +189,13 @@ static int luv_stream_write(lua_State* L) {
 
 static int luv_stream_shutdown(lua_State* L) {
   luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
-  luv_state_t*  curr = luvL_state_self(L);
-  uv_shutdown(&curr->req.shutdown, &self->h.stream, _shutdown_cb);
-  return luvL_cond_wait(&self->rouse, curr);
+  if (!luvL_object_is_shutdown(self)) {
+    self->flags |= LUV_OSHUTDOWN;
+    luv_state_t* curr = luvL_state_self(L);
+    uv_shutdown(&curr->req.shutdown, &self->h.stream, _shutdown_cb);
+    return luvL_cond_wait(&self->rouse, curr);
+  }
+  return 1;
 }
 static int luv_stream_readable(lua_State* L) {
   luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
