@@ -400,7 +400,6 @@ static void decode_value(lua_State* L, luv_buf_t* buf, int seen) {
 }
 
 static int decode_table(lua_State* L, luv_buf_t* buf, int seen) {
-  int top = lua_gettop(L);
   for (;luvL_buf_peek(buf) != LUA_TNIL;) {
     decode_value(L, buf, seen);
     decode_value(L, buf, seen);

@@ -12,7 +12,7 @@ extern "C" {
 }
 #endif
 
- 
+
 #include "luv.h"
 
 static int MAIN_INITIALIZED = 0;
@@ -88,6 +88,20 @@ uv_loop_t* luvL_event_loop(lua_State* L) {
   return luvL_state_self(L)->loop;
 }
 
+static void _sleep_cb(uv_timer_t* handle, int status) {
+  luvL_state_ready((luv_state_t*)handle->data);
+  free(handle);
+}
+static int luv_sleep(lua_State* L) {
+  lua_Number timeout = luaL_checknumber(L, 1);
+  luv_state_t* state = luvL_state_self(L);
+  uv_timer_t*  timer = (uv_timer_t*)malloc(sizeof(uv_timer_t));
+  timer->data = state;
+  uv_timer_init(luvL_event_loop(L), timer);
+  uv_timer_start(timer, _sleep_cb, (long)(timeout * 1000), 0L);
+  return luvL_state_suspend(state);
+}
+
 static int luv_mem_free(lua_State* L) {
   lua_pushinteger(L, uv_get_free_memory());
   return 1;
@@ -114,6 +128,7 @@ luaL_Reg luv_funcs[] = {
   {"mem_total",     luv_mem_total},
   {"hrtime",        luv_hrtime},
   {"self",          luv_self},
+  {"sleep",         luv_sleep},
   {NULL,            NULL}
 };
 
