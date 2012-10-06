@@ -2,9 +2,11 @@
 
 void luvL_fiber_close(luv_fiber_t* fiber) {
   if (fiber->flags & LUV_FDEAD) return;
+
   lua_pushthread(fiber->L);
   lua_pushnil(fiber->L);
-  lua_rawset(fiber->L, LUA_REGISTRYINDEX);
+  lua_settable(fiber->L, LUA_REGISTRYINDEX);
+  
   fiber->flags |= LUV_FDEAD;
 }
 
@@ -80,6 +82,7 @@ luv_fiber_t* luvL_fiber_create(luv_state_t* outer, int narg) {
 static int luv_new_fiber(lua_State* L) {
   luv_state_t* outer = luvL_state_self(L);
   luvL_fiber_create(outer, lua_gettop(L));
+  assert(lua_gettop(L) == 1);
   return 1;
 }
 

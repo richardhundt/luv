@@ -8,8 +8,8 @@ static int luv_new_tcp(lua_State* L) {
   lua_setmetatable(L, -2);
 
   luvL_object_init(curr, self);
-  uv_tcp_init(luvL_event_loop(L), &self->h.tcp);
 
+  uv_tcp_init(luvL_event_loop(L), &self->h.tcp);
   return 1;
 }
 
@@ -263,8 +263,9 @@ static int luv_tcp_getpeername(lua_State* L) {
 
 static int luv_tcp_free(lua_State *L) {
   luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
+  TRACE("__gc run, closing: %p\n", self);
   luvL_object_close(self);
-  return 0;
+  return 1;
 }
 static int luv_tcp_tostring(lua_State *L) {
   luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);

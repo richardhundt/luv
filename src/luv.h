@@ -140,6 +140,7 @@ struct luv_thread_s {
   luv_state_t*    curr;
   uv_thread_t     tid;
   uv_async_t      async;
+  uv_check_t      check;
 };
 
 struct luv_fiber_s {
@@ -174,6 +175,7 @@ union luv_any_state {
   int           flags; \
   int           type;  \
   int           count; \
+  int           ref;   \
   void*         data
 
 typedef struct luv_object_s {
@@ -240,6 +242,8 @@ int  luvL_thread_once (luv_thread_t* self);
 
 void luvL_object_init (luv_state_t* state, luv_object_t* self);
 void luvL_object_close(luv_object_t* self);
+
+int  luvL_stream_stop (luv_object_t* self);
 
 typedef ngx_queue_t luv_cond_t;
 
