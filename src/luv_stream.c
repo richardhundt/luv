@@ -70,18 +70,22 @@ static void _shutdown_cb(uv_shutdown_t* req, int status) {
 static void _listen_cb(uv_stream_t* server, int status) {
   TRACE("got client connection...\n");
   luv_object_t* self = container_of(server, luv_object_t, h);
-  lua_State* L = self->state->L;
-  luv_object_t* conn = lua_touserdata(L, 2);
-
-  int rv = uv_accept(&self->h.stream, &conn->h.stream);
-  if (rv) {
-    uv_err_t err = uv_last_error(self->h.stream.loop);
-    lua_settop(L, 0);
-    lua_pushnil(L);
-    lua_pushstring(L, uv_strerror(err));
+  if (luvL_object_is_waiting(self)) {
+    lua_State* L = self->state->L;
+    luv_object_t* conn = lua_touserdata(L, 2);
+    int rv = uv_accept(&self->h.stream, &conn->h.stream);
+    if (rv) {
+      uv_err_t err = uv_last_error(self->h.stream.loop);
+      lua_settop(L, 0);
+      lua_pushnil(L);
+      lua_pushstring(L, uv_strerror(err));
+    }
+    self->flags &= ~LUV_OWAITING;
+    luvL_cond_signal(&self->rouse);
   }
-
-  luvL_cond_signal(&self->rouse);
+  else {
+    self->count++;
+  }
 }
 
 static int luv_stream_listen(lua_State* L) {
@@ -97,10 +101,22 @@ static int luv_stream_listen(lua_State* L) {
 
 static int luv_stream_accept(lua_State *L) {
   luaL_checktype(L, 1, LUA_TUSERDATA);
-  luaL_checktype(L, 2, LUA_TUSERDATA);
   luv_object_t* self = lua_touserdata(L, 1);
-  lua_settop(L, 2);
+  luv_object_t* conn = lua_touserdata(L, 2);
+
   luv_state_t* curr = luvL_state_self(L);
+  if (self->count) {
+    self->count--;
+    int rv = uv_accept(&self->h.stream, &conn->h.stream);
+    if (rv) {
+      uv_err_t err = uv_last_error(self->h.stream.loop);
+      lua_settop(L, 0);
+      lua_pushnil(L);
+      lua_pushstring(L, uv_strerror(err));
+    }
+    return 1;
+  }
+  self->flags |= LUV_OWAITING;
   return luvL_cond_wait(&self->rouse, curr);
 }
 
@@ -182,7 +198,11 @@ static int luv_stream_writable(lua_State* L) {
 }
 
 static int luv_stream_close(lua_State* L) {
+  TRACE("close stream\n");
   luv_object_t* self = lua_touserdata(L, 1);
+  if (luvL_object_is_started(self)) {
+    uv_read_stop((uv_stream_t*)&self->h.tcp);
+  }
   luvL_object_close(self);
   return 1;
 

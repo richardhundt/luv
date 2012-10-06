@@ -147,11 +147,13 @@ union luv_any_state {
 /* luv objects */
 #define LUV_OSTARTED (1 << 0)
 #define LUV_OSTOPPED (1 << 1)
-#define LUV_OCLOSING (1 << 2)
-#define LUV_OCLOSED  (1 << 3)
+#define LUV_OWAITING (1 << 2)
+#define LUV_OCLOSING (1 << 3)
+#define LUV_OCLOSED  (1 << 4)
 
 #define luvL_object_is_started(O) ((O)->flags & LUV_OSTARTED)
 #define luvL_object_is_stopped(O) ((O)->flags & LUV_OSTOPPED)
+#define luvL_object_is_waiting(O) ((O)->flags & LUV_OWAITING)
 #define luvL_object_is_closing(O) ((O)->flags & LUV_OCLOSING)
 #define luvL_object_is_closed(O)  ((O)->flags & LUV_OCLOSED)
 
