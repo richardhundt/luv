@@ -11,11 +11,14 @@ void luvL_object_init(luv_state_t* state, luv_object_t* self) {
 
 void luvL_object_close_cb(uv_handle_t* handle) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
+  TRACE("object closed %p\n", self);
   self->flags |= LUV_OCLOSED;
+  self->state = NULL;
 }
 
 void luvL_object_close(luv_object_t* self) {
   if (!luvL_object_is_closing(self)) {
+    TRACE("object closing %p, type: %i\n", self, self->h.handle.type);
     self->flags |= LUV_OCLOSING;
     uv_close(&self->h.handle, luvL_object_close_cb);
   }

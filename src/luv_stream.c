@@ -43,12 +43,13 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
         lua_pushboolean(s->L, 0);
         lua_pushfstring(s->L, "read: %s", uv_strerror(err));
       }
+      return;
     }
     TRACE("wake up state: %p\n", s);
     luvL_state_ready(s);
-    free(buf.base);
-    buf.base = NULL;
   }
+  free(buf.base);
+  buf.base = NULL;
 }
 
 static void _write_cb(uv_write_t* req, int status) {
@@ -213,7 +214,7 @@ static int luv_stream_close(lua_State* L) {
   TRACE("close stream\n");
   luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   if (luvL_object_is_started(self)) {
-    uv_read_stop((uv_stream_t*)&self->h.tcp);
+    luvL_stream_stop(self);
   }
   luvL_object_close(self);
   return 1;
