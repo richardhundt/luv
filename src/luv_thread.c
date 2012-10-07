@@ -159,7 +159,7 @@ int luvL_thread_loop(luv_thread_t* self) {
 
 static void _async_cb(uv_async_t* handle, int status) {
   TRACE("interrupt loop\n");
-  uv_unref((uv_handle_t*)handle);
+  (void)handle;
   (void)status;
 }
 
