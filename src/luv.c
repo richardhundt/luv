@@ -224,7 +224,6 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   lua_pop(L, 1);
 
   if (!MAIN_INITIALIZED) {
-    MAIN_INITIALIZED = 1;
     luvL_thread_init_main(L);
     lua_pop(L, 1);
   }
@@ -268,6 +267,7 @@ LUALIB_API int luaopen_luv(lua_State *L) {
 
   /* luv.std{in,out,err} */
   if (!MAIN_INITIALIZED) {
+    MAIN_INITIALIZED = 1;
     loop = luvL_event_loop(L);
     curr = luvL_state_self(L);
 

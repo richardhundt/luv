@@ -52,7 +52,7 @@ $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
 
 libs: ./zmq/Makefile
-	$(MAKE) CFLAGS="-fPIC" -C ./uv
+	$(MAKE) CFLAGS="-fPIC -lm" -C ./uv
 	$(MAKE) CXXFLAGS="-fPIC" -C ./zmq
 
 ./zmq/Makefile:
