@@ -19,7 +19,7 @@ LDFLAGS+=-bundle -undefined dynamic_lookup -framework CoreServices
 ifeq ($(MH_NAME), x86_64)
 endif
 else
-LDFLAGS+=-shared -lrt
+LDFLAGS+=-shared -lrt -lstdc++
 endif
 
 #SRCS := $(wildcard *.c)
