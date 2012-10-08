@@ -723,6 +723,7 @@ cons:join()
 # ACKNOWLEDGEMENTS
 
 * Tim Caswell (creationix) and the Luvit authors
+* Aleksandar Kordic
 * Vladimir Dronnikov (dvv)
 
 # LICENSE
