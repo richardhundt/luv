@@ -33,7 +33,7 @@ event-loop style programming with callbacks.
 So how is it different?
 
 At the heart of Luv is a reasonably fast coroutine scheduler
-(20,000,000 context switches / second on my modest laptop).
+(20,000,000 context switches / second on my laptop).
 
 Coroutines are wrapped as 'fibers' which add some extra bits
 which allow them to be suspended and resumed by the libuv event
@@ -86,7 +86,7 @@ A state is an execution context which can be suspended or resumed.
 States can be either a thread - including the main thread - or a fiber.
 
 States are not resumed immediately when ready, but are fair queued
-to be resumed at the next possible time. Instead they are signalled
+to be resumed at the next possible time, after they are signalled
 as being `ready`, typically by a libuv callback.
 
 The semantics of suspending a state depends on whether it is a thread
