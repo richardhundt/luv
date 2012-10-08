@@ -7,6 +7,8 @@ void luvL_object_init(luv_state_t* state, luv_object_t* self) {
   self->data  = NULL;
   self->flags = 0;
   self->count = 0;
+  self->buf.base = NULL;
+  self->buf.len  = 0;
 }
 
 void luvL_object_close_cb(uv_handle_t* handle) {

@@ -93,6 +93,7 @@ int luvL_thread_once(luv_thread_t* self) {
     ngx_queue_remove(q);
     TRACE("[%p] rouse fiber: %p\n", self, fiber);
     if (fiber->flags & LUV_FDEAD) {
+      TRACE("[%p] fiber is dead: %p\n", fiber);
       luaL_error(self->L, "cannot resume a dead fiber");
     }
     else {
@@ -106,7 +107,9 @@ int luvL_thread_once(luv_thread_t* self) {
       }
 
       self->curr = (luv_state_t*)fiber;
+      TRACE("[%p] calling lua_resume on: %p\n", self, fiber);
       stat = lua_resume(fiber->L, narg);
+      TRACE("resume returned\n");
       self->curr = (luv_state_t*)self;
 
       switch (stat) {
@@ -143,6 +146,7 @@ int luvL_thread_once(luv_thread_t* self) {
           break;
         }
         default:
+          TRACE("ERROR: in fiber\n");
           lua_pushvalue(fiber->L, -1);  /* error message */
           lua_xmove(fiber->L, self->L, 1);
           luvL_fiber_close(fiber);

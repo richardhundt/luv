@@ -261,12 +261,6 @@ static int luv_tcp_getpeername(lua_State* L) {
   return 1;
 }
 
-static int luv_tcp_free(lua_State *L) {
-  luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
-  TRACE("__gc run, closing: %p\n", self);
-  luvL_object_close(self);
-  return 1;
-}
 static int luv_tcp_tostring(lua_State *L) {
   luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_TCP_T);
   lua_pushfstring(L, "userdata<%s>: %p", LUV_NET_TCP_T, self);
@@ -390,7 +384,7 @@ int luv_udp_membership(lua_State* L) {
 static int luv_udp_free(lua_State *L) {
   luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luvL_object_close(self);
-  return 0;
+  return 1;
 }
 static int luv_udp_tostring(lua_State *L) {
   luv_object_t *self = (luv_object_t*)luaL_checkudata(L, 1, LUV_NET_UDP_T);
@@ -412,7 +406,6 @@ luaL_Reg luv_net_tcp_meths[] = {
   {"getpeername", luv_tcp_getpeername},
   {"keepalive",   luv_tcp_keepalive},
   {"nodelay",     luv_tcp_nodelay},
-  {"__gc",        luv_tcp_free},
   {"__tostring",  luv_tcp_tostring},
   {NULL,          NULL}
 };

@@ -51,11 +51,11 @@ int luvL_state_suspend(luv_state_t* state) {
 }
 
 /* transfer control directly to another state */
-void luvL_state_resume(luv_state_t* state, int narg) {
+int luvL_state_resume(luv_state_t* state, int narg) {
   if (state->type == LUV_TTHREAD) {
-    luvL_thread_resume((luv_thread_t*)state, narg);
+    return luvL_thread_resume((luv_thread_t*)state, narg);
   }
   else {
-    luvL_fiber_resume((luv_fiber_t*)state, narg);
+    return luvL_fiber_resume((luv_fiber_t*)state, narg);
   }
 }

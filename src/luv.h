@@ -212,7 +212,7 @@ int luvL_state_is_active(luv_state_t* state);
 void luvL_state_ready  (luv_state_t* state);
 int  luvL_state_yield  (luv_state_t* state, int narg);
 int  luvL_state_suspend(luv_state_t* state);
-void luvL_state_resume (luv_state_t* state, int narg);
+int  luvL_state_resume (luv_state_t* state, int narg);
 
 void luvL_fiber_ready  (luv_fiber_t* fiber);
 int  luvL_fiber_yield  (luv_fiber_t* fiber, int narg);
@@ -244,6 +244,8 @@ void luvL_object_init (luv_state_t* state, luv_object_t* self);
 void luvL_object_close(luv_object_t* self);
 
 int  luvL_stream_stop (luv_object_t* self);
+void luvL_stream_free (luv_object_t* self);
+void luvL_stream_close(luv_object_t* self);
 
 typedef ngx_queue_t luv_cond_t;
 
