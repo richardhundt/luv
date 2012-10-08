@@ -200,6 +200,11 @@ static const luv_const_reg_t luv_zmq_consts[] = {
 extern "C" {
 #endif
 LUALIB_API int luaopen_luv(lua_State *L) {
+
+#ifndef WIN32
+  signal(SIGPIPE, SIG_IGN);
+#endif
+
   int i;
   uv_loop_t*    loop;
   luv_state_t*  curr;

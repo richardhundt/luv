@@ -93,7 +93,7 @@ int luvL_thread_once(luv_thread_t* self) {
     ngx_queue_remove(q);
     TRACE("[%p] rouse fiber: %p\n", self, fiber);
     if (fiber->flags & LUV_FDEAD) {
-      TRACE("[%p] fiber is dead: %p\n", fiber);
+      TRACE("[%p] fiber is dead: %p\n", self, fiber);
       luaL_error(self->L, "cannot resume a dead fiber");
     }
     else {
@@ -117,6 +117,7 @@ int luvL_thread_once(luv_thread_t* self) {
           TRACE("[%p] seen LUA_YIELD\n", self);
           /* if called via coroutine.yield() then we're still in the queue */
           if (fiber->flags & LUV_FREADY) {
+            TRACE("%p is still ready, back in the queue\n", fiber);
             ngx_queue_insert_tail(&self->rouse, &fiber->queue);
           }
           break;
@@ -124,7 +125,7 @@ int luvL_thread_once(luv_thread_t* self) {
           /* normal exit, wake up joining states */
           int i, narg;
           narg = lua_gettop(fiber->L);
-          TRACE("[%p] narg: %i\n", self, narg);
+          TRACE("[%p] normal exit - fiber: %p, narg: %i\n", self, fiber, narg);
           ngx_queue_t* q;
           luv_state_t* s;
           while (!ngx_queue_empty(&fiber->rouse)) {
@@ -142,6 +143,7 @@ int luvL_thread_once(luv_thread_t* self) {
               }
             }
           }
+          TRACE("closing fiber %p\n", fiber);
           luvL_fiber_close(fiber);
           break;
         }

@@ -162,6 +162,7 @@ int luvL_stream_stop(luv_object_t* self) {
   lua_settop(L, 0); \
   lua_pushboolean(L, 0); \
   lua_pushfstring(L, fmt, uv_strerror(err)); \
+  TRACE("STREAM ERROR: %s\n", lua_tostring(L, -1)); \
 } while (0)
 
 static int luv_stream_start(lua_State* L) {
@@ -199,6 +200,7 @@ static int luv_stream_read(lua_State* L) {
     lua_pushinteger(L, self->count);
     lua_pushlstring(L, (char*)self->buf.base, self->buf.len);
     free(self->buf.base);
+    self->buf.base = NULL;
     self->buf.len = 0;
     return 2;
   }
@@ -219,12 +221,13 @@ static int luv_stream_write(lua_State* L) {
 
   luv_state_t* curr = luvL_state_self(L);
   uv_write_t*  req  = &curr->req.write;
+
   if (uv_write(req, &self->h.stream, &buf, 1, _write_cb)) {
     STREAM_ERROR(L, "write: %s", luvL_event_loop(L));
     return 2;
   }
+
   lua_settop(curr->L, 1);
-  TRACE("write called... waiting\n");
   return luvL_state_suspend(curr);
 }
 
