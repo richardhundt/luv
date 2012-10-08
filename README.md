@@ -83,7 +83,7 @@ any suspended fibers waiting on events.
 ## States
 
 A state is an execution context which can be suspended or resumed.
-States can be either a thread - including the main thread - or a fiber.
+A state can be either a thread - including the main thread - or a fiber.
 
 States are not resumed immediately when ready, but are fair queued
 to be resumed at the next possible time, after they are signalled
@@ -94,7 +94,6 @@ or a fiber.
 
 * Suspending a fiber is equivalent to removing it from the scheduing queue.
 * Suspending a thread is equivalent to running the event loop and scheduler.
-
 * Readying a fiber is equivalent to inserting it into the scheduling queue.
 * Readying a thread is equivalent to interrupting the event loop.
 
@@ -187,7 +186,7 @@ for i=1, 10 do
    -- the call to wait blocks here, but would schedule any
    -- ready fibers (if there were any)
    timer:wait()
-   print("tick"
+   print("tick")
 end
 timer:stop()
 ```
@@ -476,6 +475,28 @@ callback if there are no fibers waiting to be roused.
 ## Processes
 
 See ./examples/proc.lua for now.
+
+## Pipes
+
+TODO : add docs - their use is similar to TCP streams
+
+### luv.pipe.create()
+
+### pipe:open()
+
+### pipe:bind()
+
+### pipe:connect()
+
+### pipe:listen()
+
+### pipe:accept()
+
+### pipe:read()
+
+### pipe:write(data)
+
+### pipe:close()
 
 ## Threads
 
