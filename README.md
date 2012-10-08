@@ -508,7 +508,7 @@ upvalues.
 
 These upvalues are serialized as best as possible automatically
 and deserialized during thread entry. The same rules apply as for
-`luv.codec.serialize` (see below).
+`luv.codec.encode` (see below).
 
 Return values passed back via `thread:join()` pass through the same
 serialize/deserialize process, with the same caveats. So bear in
@@ -556,6 +556,42 @@ Fiber friendly stream versions of the standard file descriptors
 
 Fiber friendly version of sleep(). The `seconds` argument may be fractional
 with millisecond resolution.
+
+### luv.hrtime()
+
+Returns the current high-resolution time expressed in nanoseconds since
+some arbitrary time in the past. May not have nanosecond resolution though.
+
+### luv.mem_total()
+
+Returns the total memory in bytes.
+
+### luv.mem_free()
+
+Returns the free memory in bytes.
+
+### luv.cpu_info()
+
+Returns a table containing an entry for each logical cpu. The entries
+have the following fields:
+
+* model - string containing the model name
+* speed - number in mhz
+* times - table with the following fields:
+  * user
+  * nice
+  * sys
+  * idle
+  * irq
+
+### luv.interface_addresses()
+
+Returns a table containing an entry for each interface address. The
+entries have the following fields:
+
+* name - string
+* is_internal - boolean
+* address - string (ip4 or ip6 address)
 
 ## Serialization
 
