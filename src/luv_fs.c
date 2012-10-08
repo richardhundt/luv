@@ -105,9 +105,7 @@ static void luv_fs_result(lua_State* L, uv_fs_t* req) {
 
       case UV_FS_OPEN:
         {
-          TRACE("OPEN, stack: %i, type[-1]: %s\n", lua_gettop(L), lua_typename(L, lua_type(L, -1)));
           luv_object_t* self = (luv_object_t*)luaL_checkudata(L, -1, LUV_FILE_T);
-          TRACE("self: %p\n", self);
           self->h.file = req->result;
         }
         break;
@@ -178,7 +176,7 @@ static void luv_fs_cb(uv_fs_t* req) {
     if (uv_fs_##func(loop, req, __VA_ARGS__, cb) < 0) { \
       uv_err_t err = uv_last_error(loop); \
       lua_settop(L, 0); \
-      lua_pushnil(L); \
+      lua_pushboolean(L, 0); \
       lua_pushstring(L, uv_strerror(err)); \
     } \
     if (curr->type == LUV_TTHREAD) { \
