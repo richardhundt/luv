@@ -81,6 +81,7 @@ typedef union luv_req_u {
 #define LUV_THREAD_T      "luv.thread"
 #define LUV_ASYNC_T       "luv.async"
 #define LUV_TIMER_T       "luv.timer"
+#define LUV_IDLE_T        "luv.idle"
 #define LUV_FS_T          "luv.fs"
 #define LUV_FS_POLL_T     "luv.fs.poll"
 #define LUV_FILE_T        "luv.file"
@@ -276,6 +277,9 @@ extern luaL_Reg luv_codec_funcs[32];
 
 extern luaL_Reg luv_timer_funcs[32];
 extern luaL_Reg luv_timer_meths[32];
+
+extern luaL_Reg luv_idle_funcs[32];
+extern luaL_Reg luv_idle_meths[32];
 
 extern luaL_Reg luv_fs_funcs[32];
 extern luaL_Reg luv_file_meths[32];

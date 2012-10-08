@@ -1,6 +1,6 @@
 # NAME
 
-Luv - Lua + libuv + ØMQ
+Luv - Thermonuclear battery pack for Lua
 
 # SYNOPSIS
 
@@ -11,7 +11,9 @@ Luv - Lua + libuv + ØMQ
 * [libuv] timers
 * [libuv] filesystem operations
 * [libuv] OS threads
-* ØMQ 3.x for the rest 
+* [libuv] pipes
+* [zmq] ØMQ 3.x for the rest 
+* binary serialization
 
 # INSTALLATION
 
@@ -84,7 +86,6 @@ local main = luv.fiber.create(function()
    end
 end)
 
-main:ready()
 main:join()
 ```
 
@@ -95,6 +96,8 @@ the data.
 Once all pending fibers have been given a chance to run, the
 event loop kicks in and polls for events and the wakes up
 any suspended fibers waiting on events.
+
+## Timers
  
 ## ØMQ + Fibers
 
@@ -136,13 +139,6 @@ objects it knows about, so this looks deceptive. In general you can
 only reference scalar upvalues, the ØMQ context object, and the `luv`
 library table itself. Same goes for additional arguments passed to
 `luv.thread.create`.
-
-When I have a bit more time, I'd like to experiment with detecting
-references to tables and other userdata and create proxy objects
-in the child threads which do RPC to objects in the outer scope
-via ØMQ inproc sockets. And provide decent serialization for
-the cases where cloning objects is what you need, of course.
-
 
 ```Lua
 local luv = require('luv')

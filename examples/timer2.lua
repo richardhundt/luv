@@ -5,7 +5,7 @@ t1:start(1000, 200)
 
 local worker1 = function()
    for i=1, 10 do
-      t1:next()
+      t1:wait()
       print("A", "tick:", i)
    end
 end
@@ -16,7 +16,7 @@ print("ok")
 
 local worker2 = function()
    for i=1, 10 do
-      t1:next()
+      t1:wait()
       print("B", "tick:", i)
    end
 end

@@ -303,7 +303,7 @@ static int luv_thread_tostring(lua_State* L) {
 }
 
 luaL_Reg luv_thread_funcs[] = {
-  {"create",    luv_new_thread},
+  {"spawn",     luv_new_thread},
   {NULL,        NULL}
 };
 

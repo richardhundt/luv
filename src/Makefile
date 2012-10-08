@@ -32,6 +32,7 @@ SRCS := luv.c \
 	luv_codec.c \
 	luv_object.c \
 	luv_timer.c \
+	luv_idle.c \
 	luv_fs.c \
 	luv_stream.c \
 	luv_pipe.c \

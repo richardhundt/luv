@@ -6,7 +6,7 @@ void luvL_fiber_close(luv_fiber_t* fiber) {
   lua_pushthread(fiber->L);
   lua_pushnil(fiber->L);
   lua_settable(fiber->L, LUA_REGISTRYINDEX);
-  
+
   fiber->flags |= LUV_FDEAD;
 }
 
@@ -68,7 +68,6 @@ luv_fiber_t* luvL_fiber_create(luv_state_t* outer, int narg) {
   self->L     = L1;
   self->flags = 0;
   self->data  = NULL;
-  self->ctx   = outer->ctx;
   self->loop  = outer->loop;
 
   /* fibers waiting for us to finish */

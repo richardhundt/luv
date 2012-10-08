@@ -1,6 +1,6 @@
 local luv = require("luv")
 
-local t1 = luv.thread.create(function(id)
+local t1 = luv.thread.spawn(function(id)
    local f1 = luv.fiber.create(function()
       for i=1, 100 do
          print(id, "tick: ", i)
@@ -9,7 +9,7 @@ local t1 = luv.thread.create(function(id)
    f1:join()
    return "answer"
 end, "A")
-local t2 = luv.thread.create(function(id)
+local t2 = luv.thread.spawn(function(id)
    local f1 = luv.fiber.create(function()
       for i=1, 100 do
          print(id, "tick: ", i)

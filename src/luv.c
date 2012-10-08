@@ -257,6 +257,12 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luvL_new_class(L, LUV_TIMER_T, luv_timer_meths);
   lua_pop(L, 1);
 
+  /* luv.idle */
+  luvL_new_module(L, "luv_idle", luv_idle_funcs);
+  lua_setfield(L, -2, "idle");
+  luvL_new_class(L, LUV_IDLE_T, luv_idle_meths);
+  lua_pop(L, 1);
+
   /* luv.fs */
   luvL_new_module(L, "luv_fs", luv_fs_funcs);
   lua_setfield(L, -2, "fs");

@@ -47,7 +47,7 @@ static int luv_timer_stop(lua_State* L) {
   return 1;
 }
 
-static int luv_timer_next(lua_State *L) {
+static int luv_timer_wait(lua_State *L) {
   luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
   luv_state_t* state = luvL_state_self(L);
   return luvL_cond_wait(&self->rouse, state);
@@ -73,7 +73,7 @@ luaL_Reg luv_timer_meths[] = {
   {"start",     luv_timer_start},
   {"again",     luv_timer_again},
   {"stop",      luv_timer_stop},
-  {"next",      luv_timer_next},
+  {"wait",      luv_timer_wait},
   {"__gc",      luv_timer_free},
   {"__tostring",luv_timer_tostring},
   {NULL,        NULL}

@@ -6,7 +6,7 @@ local f1 = luv.fiber.create(function()
    t1:start(1000, 100)
    for i=1, 10 do
       print("tick:", i)
-      print(t1:next())
+      print(t1:wait())
    end
    t1:stop()
 end)
