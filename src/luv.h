@@ -78,7 +78,6 @@ typedef union luv_req_u {
 #define LUV_NS_T          "luv.ns"
 #define LUV_COND_T        "luv.cond"
 #define LUV_FIBER_T       "luv.fiber"
-#define LUV_ACTOR_T       "luv.actor"
 #define LUV_THREAD_T      "luv.thread"
 #define LUV_ASYNC_T       "luv.async"
 #define LUV_TIMER_T       "luv.timer"
@@ -128,7 +127,6 @@ typedef enum {
   luv_state_t*  outer; \
   lua_State*    L;     \
   luv_req_t     req;   \
-  void*         ctx;   \
   void*         data
 
 struct luv_state_s {
@@ -190,15 +188,9 @@ typedef struct luv_chan_s {
   void*         get;
 } luv_chan_t;
 
-typedef struct luv_actor_s {
-  LUV_OBJECT_FIELDS;
-  void*         mbox;
-} luv_actor_t;
-
 union luv_any_object {
   luv_object_t object;
   luv_chan_t   chan;
-  luv_actor_t  actor;
 };
 
 int luvL_traceback(lua_State *L);
@@ -307,10 +299,10 @@ extern luaL_Reg luv_zmq_socket_meths[32];
 #ifdef WIN32
 #  ifdef LUV_EXPORT
 #    define LUALIB_API __declspec(dllexport)
-#  else 
+#  else
 #    define LUALIB_API __declspec(dllimport)
 #  endif
-#else 
+#else
 #  define LUALIB_API LUA_API
 #endif
 

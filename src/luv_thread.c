@@ -181,11 +181,7 @@ void luvL_thread_init_main(lua_State* L) {
   self->L     = L;
   self->outer = (luv_state_t*)self;
   self->data  = NULL;
-  self->ctx   = zmq_ctx_new();
   self->tid   = (uv_thread_t)uv_thread_self();
-
-  /* shared ØMQ context for channels */
-  zmq_ctx_set(self->ctx, ZMQ_IO_THREADS, 1);
 
   ngx_queue_init(&self->rouse);
 
@@ -244,7 +240,6 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   self->L     = luaL_newstate();
   self->outer = outer;
   self->data  = NULL;
-  self->ctx   = outer->ctx;
 
   ngx_queue_init(&self->rouse);
 
@@ -255,11 +250,7 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
   luaopen_luv(self->L);
 
   lua_settop(self->L, 0);
-
-  TRACE("BEFORE ENCODE TOP: %i, narg: %i\n", lua_gettop(L), narg);
   luvL_codec_encode(L, narg);
-  TRACE("AFTER ENCODE TOP: %i\n", lua_gettop(L));
-
   luaL_checktype(L, -1, LUA_TSTRING);
   lua_xmove(L, self->L, 1);
 
@@ -302,7 +293,7 @@ static int luv_thread_join(lua_State* L) {
 }
 static int luv_thread_free(lua_State* L) {
   luv_thread_t* self = lua_touserdata(L, 1);
-  zmq_close(self->data);
+  uv_loop_delete(self->loop);
   return 1;
 }
 static int luv_thread_tostring(lua_State* L) {
