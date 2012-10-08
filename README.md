@@ -14,6 +14,7 @@ local luv = require("luv")
 * [libuv] filesystem operations
 * [libuv] OS threads
 * [libuv] pipes
+* [libuv] idle watchers
 * [zmq] ØMQ 3.x for the rest 
 * binary serialization
 
@@ -97,6 +98,8 @@ or a fiber.
 * Readying a fiber is equivalent to inserting it into the scheduling queue.
 * Readying a thread is equivalent to interrupting the event loop.
 
+Any objects (timers, tcp, idle, etc.) may also run from the main thread
+while not blocking active fibers.
 
 ## Fibers
 
@@ -187,6 +190,64 @@ for i=1, 10 do
    print("tick"
 end
 timer:stop()
+```
+
+## Idle watchers
+
+Idle watchers run when there's nothing else to do. The object will rouse
+the waiting fibers repeatedly.
+
+### luv.idle.create()
+
+Create an idle watcher.
+
+### idle:start()
+
+Start the idle watcher.
+
+### idle:stop()
+
+Stop the idle watcher.
+
+### idle:wait()
+
+Suspend the current state until there's nothing else to do.
+
+### Idle Example
+
+This is from the examples. During the timer pauses, the idle watcher
+unblocks the call to `idle:wait()`.
+
+```Lua
+local luv = require('luv')
+
+local idle = luv.idle.create()
+idle:start()
+
+local idle_count = 0
+local f1 = luv.fiber.create(function()
+   while true do
+      idle:wait()
+      idle_count = idle_count + 1
+   end
+end)
+
+f1:ready()
+
+local timer = luv.timer.create()
+timer:start(10, 10)
+
+local f2 = luv.fiber.create(function()
+   for i=1, 10 do
+      print("TIMER NEXT:", timer:wait())
+   end
+   timer:stop()
+end)
+
+f2:join()
+idle:stop()
+print("IDLE COUNT:", idle_count)
+
 ```
 
 ## Filesystem operations
@@ -418,11 +479,62 @@ See ./examples/proc.lua for now.
 
 ## Threads
 
-See ./examples/thread.lua for now.
+Threads are real OS threads and run concurrently (so no global locks)
+in distinct global Lua states. This means that sharing data between
+threads should be done with ØMQ sockets. However, functions passed
+to `luv.thread.spawn` are ordinary Lua functions and may contain
+upvalues.
 
-## ØMQ
+These upvalues are serialized as best as possible automatically
+and deserialized during thread entry. The same rules apply as for
+`luv.codec.serialize` (see below).
 
-See ./examples/zmq.lua for now.
+Return values passed back via `thread:join()` pass through the same
+serialize/deserialize process, with the same caveats. So bear in
+mind that there's no true shared address space when using threads.
+This is A Good Thing (tm), I'm told.
+
+Some of Luv's own objects and library tables are handled transparently.
+
+In particular ØMQ context objects can be passed to threads or referenced
+as upvalues. ØMQ sockets and other libuv objects cannot.
+
+Each thread has it's own libuv event loop, with the main thread running
+libuv's default loop. Threads may spawn other threads as well as fibers.
+
+### luv.thread.spawn(func, arg1, ..., argN)
+
+Spawn a thread, using the Lua function `func` as the entry,
+and serialize the rest of the arguments and pass them deserialized
+back to `func` inside the new thread's global state.
+
+Threads are spawned immediately during a call to `luv.thread.spawn`, so
+they differ to fibers in that there's no call to `ready` them first.
+
+Returns a thread object.
+
+### thread:join()
+
+Wait for the thread to finish. Returns the values returned by the thread
+if any.
+
+Threads may join on threads or fibers. I have no idea what happens if
+a fiber joins on a thread. Bad Things probably. Haven't tried it yet.
+
+## Utilities
+
+### luv.self()
+
+Returns the currently running state, which can be either a thread or a fiber.
+
+### luv.stdin, luv.stdout and luv.stderr
+
+Fiber friendly stream versions of the standard file descriptors
+
+### luv.sleep(seconds)
+
+Fiber friendly version of sleep(). The `seconds` argument may be fractional
+with millisecond resolution.
 
 ## Serialization
 
@@ -498,6 +610,116 @@ assert(dec.x == 1 and dec.y == 2)
 assert(type(dec.move) == 'function')
 ```
 
+## ØMQ
+
+Luv provides bindings to ØMQ. The primary motivation for all this is that
+I really wanted threads. And ØMQ and threads fit together like a fist in
+the eye socket. ØMQ is tied into libuv's polling mechanism and has the same
+suspend/resume states behaviour as other I/O watchers.
+
+You can, of course, use ØMQ from fibers as well.
+
+### luv.zmq.create(nthreads)
+
+Creates a new ØMQ context object. Context objects can be shared across
+different threads and may be referenced as upvalues, or passed as
+arguments and return values (they survive serialization).
+
+The `nthreads` argument controls the number of worker threads spawned
+by ØMQ's internals, and defaults to `1`.
+
+### zmq:socket(type)
+
+Called on the ØMQ context object to create a socket of type `type`. Socket
+types are described by constants defined in the `luv.zmq` table and map
+to the standard ØMQ socket types with prefix removed. They are:
+
+* REQ
+* REP
+* DEALER
+* ROUTER
+* PUB
+* SUB
+* PUSH
+* PULL
+* PAIR
+
+The ØMQ docs explain what they all mean: http://zguide.zeromq.org/
+
+The socket returned may _not_ be shared between threads.
+
+### socket:bind(addr)
+
+Bind this ØMQ socket to the address provided by `addr`. The `addr`
+string is the same as documented by ØMQ (i.e. "tcp://127.0.0.1:8080", etc.)
+
+### socket:connect(addr)
+
+Connect this ØMQ socket to the address provided by `addr`. The `addr`
+string is the same as documented by ØMQ (i.e. "tcp://127.0.0.1:8080", etc.)
+
+### socket:send(mesg)
+
+Send a message on the ØMQ socket.
+
+### socket:recv()
+
+Receive a message from the ØMQ socket.
+
+### socket:close()
+
+Close the ØMQ socket.
+
+### socket:getsockopt(opt)
+
+Get a socket option named `opt`. Note that `opt` is a string, not a numeric
+constant as with the socket constructor. I'm still undecided which is better.
+
+See the ØMQ docs.
+
+### socket:setsockopt(opt, val)
+
+Set a socket option named `opt`. Note that `opt` is a string, not a numeric
+constant as with the socket constructor. I'm still undecided which is better.
+
+See the ØMQ docs.
+
+### ØMQ Example
+
+```Lua
+local zmq = luv.zmq.create(1)
+local prod = luv.thread.create(function()
+   local pub = zmq:socket(luv.zmq.PAIR)
+   pub:bind('inproc://#1')
+
+   print("enter prod:")
+   for i=1, 10 do
+      pub:send("tick: "..i)
+   end
+   pub:send("STOP")
+   assert(pub:recv() == "OK")
+   pub:close()
+end)
+
+local cons = luv.thread.create(function()
+   local sub = zmq:socket(luv.zmq.PAIR)
+   sub:connect('inproc://#1')
+
+   print("enter cons")
+   while true do
+      local msg = sub:recv()
+      if msg == "STOP" then
+         sub:send("OK")
+         break
+      end
+   end
+   sub:close()
+end)
+
+cons:join()
+```
+
+
 # ACKNOWLEDGEMENTS
 
 * Tim Caswell (creationix) and the Luvit authors
@@ -526,6 +748,7 @@ assert(type(dec.move) == 'function')
 * uv_poll_t wrapper
 * test UDP stuff
 * ØMQ devices and utils
+* unify ØMQ constants (either strings or numbers)
 * finish docs
 
 
