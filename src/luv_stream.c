@@ -19,11 +19,14 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
     luvL_stream_stop(self);
     TRACE("empty read queue, save buffer and stop read\n");
     if (len > 0) {
-      self->buf = buf;
+      self->buf   = buf;
+      self->count = len;
     }
     else {
       if (buf.base) {
         free(buf.base);
+        buf.base = NULL;
+        buf.len  = 0;
       }
     }
   }
@@ -55,6 +58,8 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
     }
     if (buf.base) {
       free(buf.base);
+      buf.len  = 0;
+      buf.base = NULL;
     }
     TRACE("wake up state: %p\n", s);
     luvL_state_ready(s);
@@ -198,10 +203,11 @@ static int luv_stream_read(lua_State* L) {
     /* we have a buffer use that */
     TRACE("have pending data\n");
     lua_pushinteger(L, self->count);
-    lua_pushlstring(L, (char*)self->buf.base, self->buf.len);
+    lua_pushlstring(L, (char*)self->buf.base, self->count);
     free(self->buf.base);
     self->buf.base = NULL;
-    self->buf.len = 0;
+    self->buf.len  = 0;
+    self->count    = 0;
     return 2;
   }
   if (!luvL_object_is_started(self)) {
