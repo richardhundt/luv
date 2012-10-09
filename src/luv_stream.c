@@ -197,7 +197,7 @@ static int luv_stream_read(lua_State* L) {
   if (self->buf.base) {
     /* we have a buffer use that */
     TRACE("have pending data\n");
-    lua_pushinteger(L, self->count);
+    lua_pushinteger(L, self->buf.len);
     lua_pushlstring(L, (char*)self->buf.base, self->buf.len);
     free(self->buf.base);
     self->buf.base = NULL;
