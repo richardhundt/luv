@@ -293,7 +293,9 @@ static int luv_thread_join(lua_State* L) {
 }
 static int luv_thread_free(lua_State* L) {
   luv_thread_t* self = lua_touserdata(L, 1);
+  TRACE("free thread\n");
   uv_loop_delete(self->loop);
+  TRACE("ok\n");
   return 1;
 }
 static int luv_thread_tostring(lua_State* L) {
