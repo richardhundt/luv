@@ -16,6 +16,7 @@ void luvL_object_close_cb(uv_handle_t* handle) {
   TRACE("object closed %p\n", self);
   self->flags |= LUV_OCLOSED;
   self->state = NULL;
+  luvL_cond_signal(&self->rouse);
 }
 
 void luvL_object_close(luv_object_t* self) {
