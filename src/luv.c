@@ -382,12 +382,18 @@ LUALIB_API int luaopen_luv(lua_State *L) {
 
     const char* stdfhs[] = { "stdin", "stdout", "stderr" };
     for (i = 0; i < 3; i++) {
+#ifdef WIN32
+      const uv_file fh = GetStdHandle(i == 0 ? STD_INPUT_HANDLE
+       : (i == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE));
+#else
+      const uv_file fh = i;
+#endif
       stdfh = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
       luaL_getmetatable(L, LUV_PIPE_T);
       lua_setmetatable(L, -2);
       luvL_object_init(curr, stdfh);
       uv_pipe_init(loop, &stdfh->h.pipe, 0);
-      uv_pipe_open(&stdfh->h.pipe, i);
+      uv_pipe_open(&stdfh->h.pipe, fh);
       lua_pushvalue(L, -1);
       lua_setfield(L, LUA_REGISTRYINDEX, stdfhs[i]);
       lua_setfield(L, -2, stdfhs[i]);
