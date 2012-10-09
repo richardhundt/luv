@@ -206,7 +206,7 @@ static int luv_stream_stop(lua_State* L) {
 static int luv_stream_read(lua_State* L) {
   luv_object_t* self = (luv_object_t*)lua_touserdata(L, 1);
   luv_state_t*  curr = luvL_state_self(L);
-  int len = luaL_optinteger(L, 2, LUV_BUF_SIZE);
+  int len = luaL_optinteger(L, 2, 4096);
   if (luvL_object_is_closing(self)) {
     TRACE("error: reading from closed stream\n");
     lua_pushnil(L);

@@ -392,7 +392,6 @@ LUALIB_API int luaopen_luv(lua_State *L) {
       luaL_getmetatable(L, LUV_PIPE_T);
       lua_setmetatable(L, -2);
       luvL_object_init(curr, stdfh);
-      stdfh->flags |= LUV_ONOCLOSE;
       uv_pipe_init(loop, &stdfh->h.pipe, 0);
       uv_pipe_open(&stdfh->h.pipe, fh);
       lua_pushvalue(L, -1);

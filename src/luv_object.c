@@ -22,16 +22,8 @@ void luvL_object_close_cb(uv_handle_t* handle) {
 void luvL_object_close(luv_object_t* self) {
   if (!luvL_object_is_closing(self)) {
     TRACE("object closing %p, type: %i\n", self, self->h.handle.type);
-    if (self->flags & LUV_ONOCLOSE) {
-      /* this is here to keep ArchLinux from segfaulting
-      ** under zsh during close(handle->fd) inside libuv
-      ** when called on pipes opened for std{in,out,err} */
-      self->flags |= (LUV_OCLOSING | LUV_OCLOSED);
-    }
-    else {
-      self->flags |= LUV_OCLOSING;
-      uv_close(&self->h.handle, luvL_object_close_cb);
-    }
+    self->flags |= LUV_OCLOSING;
+    uv_close(&self->h.handle, luvL_object_close_cb);
   }
 }
 

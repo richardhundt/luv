@@ -159,7 +159,6 @@ union luv_any_state {
 #define LUV_OCLOSING  (1 << 3)
 #define LUV_OCLOSED   (1 << 4)
 #define LUV_OSHUTDOWN (1 << 5)
-#define LUV_ONOCLOSE  (1 << 6)
 
 #define luvL_object_is_started(O)  ((O)->flags & LUV_OSTARTED)
 #define luvL_object_is_stopped(O)  ((O)->flags & LUV_OSTOPPED)
