@@ -337,12 +337,13 @@ Change directory to `path`.
 
 Returns the path of the executable.
  
-### file:read(len)
+### file:read(len[, offset])
 
 Attempts to read `len` number of bytes from the file and returns the number
-of bytes actually read followed by the data.
+of bytes actually read followed by the data. If the optional `offset` is
+given, then start reading there.
 
-### file:write(data [,offset])
+### file:write(data[, offset])
 
 Write `data` to the file. If the optional `offset` argument is given, then
 write start at that offset. Otherwise write from the start of the file.
@@ -438,10 +439,12 @@ Enable or disable TCP keepalive. The first arugment is a boolean. If
 Enable or disable nagle's algorithm for this socket. The `enable`
 argument must be a boolean.
 
-### tcp:read()
+### tcp:read([length])
 
 Reads data from the socket. Returns the number of bytes read followed
-by the data itself.
+by the data itself. If the optional `length` argument is provided then
+that is the size, in bytes, of the buffer used internally. Defaults
+to the value of `LUV_BUF_SIZE` defined in luv.h (4096, currently).
 
 ### tcp:readable()
 
@@ -611,7 +614,7 @@ Deserializes `string` previously serialized with a call to `luv.codec.encode`
 
 Returns the decoded tuple.
 
-### Serliazation hook
+### Serialization hook
 
 For userdata and tables, a special hook is provided. If the metatable
 has a `__codec` method defined, then that is called. The `__codec`
