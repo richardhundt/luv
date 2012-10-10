@@ -57,7 +57,6 @@ static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
         lua_pushnil(s->L);
       }
       else {
-        uv_close((uv_handle_t*)stream, NULL);
         lua_settop(s->L, 0);
         lua_pushboolean(s->L, 0);
         lua_pushfstring(s->L, "read: %s", uv_strerror(err));
