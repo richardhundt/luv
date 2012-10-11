@@ -1,10 +1,10 @@
 # NAME
 
-Luv - Thermonuclear battery pack for Lua
+Ray - Thermonuclear battery pack for Lua
 
 # SYNOPSIS
 
-local luv = require("luv")
+local ray = require("ray")
 
 # FEATURES
 
@@ -20,19 +20,19 @@ local luv = require("luv")
 
 # INSTALLATION
 
-Run `make` and copy the luv.so to where you need it. In
+Run `make` and copy the ray.so to where you need it. In
 theory both ØMQ and libuv support WIN32, but I have no
 idea how that build system works there, so patches welcome.
 
 # DESCRIPTION
 
-Luv is an attempt to do libuv bindings to Lua in a style more
+Ray is an attempt to do libuv bindings to Lua in a style more
 suited to a language with coroutines than edge-triggered
 event-loop style programming with callbacks.
 
 So how is it different?
 
-At the heart of Luv is a reasonably fast coroutine scheduler
+At the heart of Ray is a reasonably fast coroutine scheduler
 (20,000,000 context switches / second on my laptop).
 
 Coroutines are wrapped as 'fibers' which add some extra bits
@@ -43,16 +43,16 @@ with a nice linear flow, but without the impressive crashes.
 Here's the canonical TCP echo server:
 
 ```Lua
-local main = luv.fiber.create(function()
-   local server = luv.net.tcp()
+local main = ray.fiber.create(function()
+   local server = ray.net.tcp()
    server:bind("127.0.0.1", 8080)
    server:listen()
 
    while true do
-      local client = luv.net.tcp()
+      local client = ray.net.tcp()
       server:accept(client)
 
-      local child = luv.fiber.create(function()
+      local child = ray.fiber.create(function()
          while true do
             local got, str = client:read()
             if got then
@@ -109,9 +109,9 @@ you so that you don't explicitly need to call `coroutine.yield`.
 This makes fibers more like green threads, but without preemption.
 So most of the time, you just let them run and forget about the scheduling.
 
-### luv.fiber.create(func, [arg1, ..., argN])
+### ray.fiber.create(func, [arg1, ..., argN])
 
-Fibers are created by calling `luv.fiber.create` and passing it the function
+Fibers are created by calling `ray.fiber.create` and passing it the function
 to be run inside the fiber, along with any additional arguments which are
 passed to the function in turn.
 
@@ -131,10 +131,10 @@ state until the fiber exits. Returns any values returned by the fiber.
 ### Fiber example:
 
 ```Lua
-local f1 = luv.fiber.create(function(mesg)
+local f1 = ray.fiber.create(function(mesg)
     print("inside fiber, mesg: ", mesg)
 
-    local f2 = luv.fiber.create(function()
+    local f2 = ray.fiber.create(function()
         print("in child")
         return "answer", 42
     end)
@@ -152,7 +152,7 @@ f1:join()
 Timers allow you to suspend states for periods and wake them up again
 after the period has expired.
 
-### luv.timer.create()
+### ray.timer.create()
 
 Constructor. Takes no arguments. Returns a timer instance.
 
@@ -177,9 +177,9 @@ as the timeout
 ### Timer Example:
 
 ```Lua
-local luv = require("luv")
+local ray = require("ray")
 
-local timer = luv.timer.create()
+local timer = ray.timer.create()
 -- start after 1 second and repeat after 100ms
 timer:start(1000, 100)
 for i=1, 10 do
@@ -196,7 +196,7 @@ timer:stop()
 Idle watchers run when there's nothing else to do. The object will rouse
 the waiting fibers repeatedly.
 
-### luv.idle.create()
+### ray.idle.create()
 
 Create an idle watcher.
 
@@ -218,13 +218,13 @@ This is from the examples. During the timer pauses, the idle watcher
 unblocks the call to `idle:wait()`.
 
 ```Lua
-local luv = require('luv')
+local ray = require('ray')
 
-local idle = luv.idle.create()
+local idle = ray.idle.create()
 idle:start()
 
 local idle_count = 0
-local f1 = luv.fiber.create(function()
+local f1 = ray.fiber.create(function()
    while true do
       idle:wait()
       idle_count = idle_count + 1
@@ -233,10 +233,10 @@ end)
 
 f1:ready()
 
-local timer = luv.timer.create()
+local timer = ray.timer.create()
 timer:start(10, 10)
 
-local f2 = luv.fiber.create(function()
+local f2 = ray.fiber.create(function()
    for i=1, 10 do
       print("TIMER NEXT:", timer:wait())
    end
@@ -254,7 +254,7 @@ print("IDLE COUNT:", idle_count)
 In general, file system operations return an integer on success
 (usually 0) and `false` along with an error message on failure.
 
-### luv.fs.open(path, mode, perm)
+### ray.fs.open(path, mode, perm)
 
 Open a file.
 
@@ -264,76 +264,76 @@ Open a file.
 
 Returns a `file` object. See below for `file` object methods.
 
-### luv.fs.unlink(path)
+### ray.fs.unlink(path)
 
 Delete a file.
 
-### luv.fs.mkdir(path)
+### ray.fs.mkdir(path)
 
 Create a directory.
 
-### luv.fs.rmdir(path)
+### ray.fs.rmdir(path)
 
 Delete a directory.
 
-### luv.fs.readdir(path)
+### ray.fs.readdir(path)
 
 Reads the entries of a directory. On sucess returns a table
 including the entry names.
 
-### luv.fs.stat(path)
+### ray.fs.stat(path)
 
 Stats the supplied path and returns a table of key, value 
 pairs.
 
-### luv.fs.rename(path, newpath)
+### ray.fs.rename(path, newpath)
 
 Renames a file or directory.
 
-### luv.fs.sendfile(outfile, infile)
+### ray.fs.sendfile(outfile, infile)
 
 Efficiently copy data from infile to outfile.
 
-### luv.fs.chmod(path, mode)
+### ray.fs.chmod(path, mode)
 
 Change file or directory mode. The `mode` argument is a string
 representation of an octal number: i.e. '644'
 
-### luv.fs.chown(path, uid, gid)
+### ray.fs.chown(path, uid, gid)
 
 Change the ownership of a path to the supplied `uid` and `gid`.
 Both `uid` and `gid` are integers.
 
-### luv.fs.utime(path, atime, mtime)
+### ray.fs.utime(path, atime, mtime)
 
 Change the access and modification time of a path
 
-### luv.fs.lstat(path)
+### ray.fs.lstat(path)
 
 Stat a link.
 
-### luv.fs.link(srcpath, dstpath)
+### ray.fs.link(srcpath, dstpath)
 
 Create a hard link from `srcpath` to `dstpath`
 
-### luv.fs.symlink(srcpath, dstpath, mode)
+### ray.fs.symlink(srcpath, dstpath, mode)
 
 Create a symbolic link from `srcpath` to `dstpath` with `mode` flags.
-The `mode` argument takes the same values as for `luv.fs.open`.
+The `mode` argument takes the same values as for `ray.fs.open`.
 
-### luv.fs.readlink(path)
+### ray.fs.readlink(path)
 
 Dereference a symbolic link and return the target.
 
-### luv.fs.cwd()
+### ray.fs.cwd()
 
 Returns the current working directory of the running process.
 
-### luv.fs.chdir(path)
+### ray.fs.chdir(path)
 
 Change directory to `path`.
 
-### luv.fs.exepath()
+### ray.fs.exepath()
 
 Returns the path of the executable.
  
@@ -354,7 +354,7 @@ Close the file.
 
 ### file:stat()
 
-Stat the file. Same return value as for `luv.fs.stat`
+Stat the file. Same return value as for `ray.fs.stat`
 
 ### file:sync()
 
@@ -366,15 +366,15 @@ Sync data to disk.
 
 ### file:utime(atime, mtime)
 
-Like `luv.fs.utime` but uses the current file object.
+Like `ray.fs.utime` but uses the current file object.
 
 ### file:chmod(mode)
 
-Like `luv.fs.chmod` but uses the current file object.
+Like `ray.fs.chmod` but uses the current file object.
 
 ### file:chown(uid, gid)
 
-Like `luv.fs.chown` but uses the current file object.
+Like `ray.fs.chown` but uses the current file object.
 
 ### file:truncate()
 
@@ -382,7 +382,7 @@ Truncate the file.
 
 ## TCP Streams
 
-### luv.net.tcp()
+### ray.net.tcp()
 
 Creates and returns a new unbound and disconnected TCP socket.
 
@@ -402,10 +402,10 @@ Calls `accept` with `tcp2` becoming the client socket. Used as follows:
 
 ```Lua
 
-local server = luv.net.tcp()
+local server = ray.net.tcp()
 server:bind(host, port)
 while true do
-   local client = luv.net.tcp()
+   local client = ray.net.tcp()
    server:accept(client)
    -- do something with the client, then close
    client:close()
@@ -444,7 +444,7 @@ argument must be a boolean.
 Reads data from the socket. Returns the number of bytes read followed
 by the data itself. If the optional `length` argument is provided then
 that is the size, in bytes, of the buffer used internally. Defaults
-to the value of `LUV_BUF_SIZE` defined in luv.h (4096, currently).
+to the value of `RAY_BUF_SIZE` defined in ray.h (4096, currently).
 
 ### tcp:readable()
 
@@ -483,7 +483,7 @@ See ./examples/proc.lua for now.
 
 TODO : add docs - their use is similar to TCP streams
 
-### luv.pipe.create()
+### ray.pipe.create()
 
 ### pipe:open()
 
@@ -506,19 +506,19 @@ TODO : add docs - their use is similar to TCP streams
 Threads are real OS threads and run concurrently (so no global locks)
 in distinct global Lua states. This means that sharing data between
 threads should be done with ØMQ sockets. However, functions passed
-to `luv.thread.spawn` are ordinary Lua functions and may contain
+to `ray.thread.spawn` are ordinary Lua functions and may contain
 upvalues.
 
 These upvalues are serialized as best as possible automatically
 and deserialized during thread entry. The same rules apply as for
-`luv.codec.encode` (see below).
+`ray.codec.encode` (see below).
 
 Return values passed back via `thread:join()` pass through the same
 serialize/deserialize process, with the same caveats. So bear in
 mind that there's no true shared address space when using threads.
 This is A Good Thing (tm), I'm told.
 
-Some of Luv's own objects and library tables are handled transparently.
+Some of Ray's own objects and library tables are handled transparently.
 
 In particular ØMQ context objects can be passed to threads or referenced
 as upvalues. ØMQ sockets and other libuv objects cannot.
@@ -526,13 +526,13 @@ as upvalues. ØMQ sockets and other libuv objects cannot.
 Each thread has it's own libuv event loop, with the main thread running
 libuv's default loop. Threads may spawn other threads as well as fibers.
 
-### luv.thread.spawn(func, arg1, ..., argN)
+### ray.thread.spawn(func, arg1, ..., argN)
 
 Spawn a thread, using the Lua function `func` as the entry,
 and serialize the rest of the arguments and pass them deserialized
 back to `func` inside the new thread's global state.
 
-Threads are spawned immediately during a call to `luv.thread.spawn`, so
+Threads are spawned immediately during a call to `ray.thread.spawn`, so
 they differ to fibers in that there's no call to `ready` them first.
 
 Returns a thread object.
@@ -547,33 +547,33 @@ a fiber joins on a thread. Bad Things probably. Haven't tried it yet.
 
 ## Utilities
 
-### luv.self()
+### ray.self()
 
 Returns the currently running state, which can be either a thread or a fiber.
 
-### luv.stdin, luv.stdout and luv.stderr
+### ray.stdin, ray.stdout and ray.stderr
 
 Fiber friendly stream versions of the standard file descriptors
 
-### luv.sleep(seconds)
+### ray.sleep(seconds)
 
 Fiber friendly version of sleep(). The `seconds` argument may be fractional
 with millisecond resolution.
 
-### luv.hrtime()
+### ray.hrtime()
 
 Returns the current high-resolution time expressed in nanoseconds since
 some arbitrary time in the past. May not have nanosecond resolution though.
 
-### luv.mem_total()
+### ray.mem_total()
 
 Returns the total memory in bytes.
 
-### luv.mem_free()
+### ray.mem_free()
 
 Returns the free memory in bytes.
 
-### luv.cpu_info()
+### ray.cpu_info()
 
 Returns a table containing an entry for each logical cpu. The entries
 have the following fields:
@@ -587,7 +587,7 @@ have the following fields:
   * idle
   * irq
 
-### luv.interface_addresses()
+### ray.interface_addresses()
 
 Returns a table containing an entry for each interface address. The
 entries have the following fields:
@@ -598,19 +598,19 @@ entries have the following fields:
 
 ## Serialization
 
-Luv ships with a binary serializer which can serialize and deserialize
+Ray ships with a binary serializer which can serialize and deserialize
 Lua tuples. Tuples can contain tables (with cycles), Lua functions (with
 upvalues) any scalar value. Function upvalues must themselves be of a type
 which can be serialized. Coroutines and C functions can *not* be serialized.
 
-### luv.codec.encode(arg1, ..., argN)
+### ray.codec.encode(arg1, ..., argN)
 
 Serializes tuple `arg1` through `argN` and returns a string which can
-be passed to `luv.codec.decode`.
+be passed to `ray.codec.decode`.
 
-### luv.codec.decode(string)
+### ray.codec.decode(string)
 
-Deserializes `string` previously serialized with a call to `luv.codec.encode`
+Deserializes `string` previously serialized with a call to `ray.codec.encode`
 
 Returns the decoded tuple.
 
@@ -636,7 +636,7 @@ function is called with the second return value is argument.
 For example:
 
 ```Lua
-local luv = require("luv")
+local ray = require("ray")
 
 module("my.module", package.seeall)
 
@@ -663,8 +663,8 @@ local Point = require("my.module").Point
 local obj = Point.new()
 obj:move(1, 2)
 
-local str = luv.codec.encode(obj)
-local dec = luv.codec.decode(str)
+local str = ray.codec.encode(obj)
+local dec = ray.codec.decode(str)
 
 assert(dec.x == 1 and dec.y == 2)
 assert(type(dec.move) == 'function')
@@ -672,14 +672,14 @@ assert(type(dec.move) == 'function')
 
 ## ØMQ
 
-Luv provides bindings to ØMQ. The primary motivation for all this is that
+Ray provides bindings to ØMQ. The primary motivation for all this is that
 I really wanted threads. And ØMQ and threads fit together like a fist in
 the eye socket. ØMQ is tied into libuv's polling mechanism and has the same
 suspend/resume states behaviour as other I/O watchers.
 
 You can, of course, use ØMQ from fibers as well.
 
-### luv.zmq.create(nthreads)
+### ray.zmq.create(nthreads)
 
 Creates a new ØMQ context object. Context objects can be shared across
 different threads and may be referenced as upvalues, or passed as
@@ -691,7 +691,7 @@ by ØMQ's internals, and defaults to `1`.
 ### zmq:socket(type)
 
 Called on the ØMQ context object to create a socket of type `type`. Socket
-types are described by constants defined in the `luv.zmq` table and map
+types are described by constants defined in the `ray.zmq` table and map
 to the standard ØMQ socket types with prefix removed. They are:
 
 * REQ
@@ -747,9 +747,9 @@ See the ØMQ docs.
 ### ØMQ Example
 
 ```Lua
-local zmq = luv.zmq.create(1)
-local prod = luv.thread.create(function()
-   local pub = zmq:socket(luv.zmq.PAIR)
+local zmq = ray.zmq.create(1)
+local prod = ray.thread.create(function()
+   local pub = zmq:socket(ray.zmq.PAIR)
    pub:bind('inproc://#1')
 
    print("enter prod:")
@@ -761,8 +761,8 @@ local prod = luv.thread.create(function()
    pub:close()
 end)
 
-local cons = luv.thread.create(function()
-   local sub = zmq:socket(luv.zmq.PAIR)
+local cons = ray.thread.create(function()
+   local sub = zmq:socket(ray.zmq.PAIR)
    sub:connect('inproc://#1')
 
    print("enter cons")
@@ -782,13 +782,13 @@ cons:join()
 
 # ACKNOWLEDGEMENTS
 
-* Tim Caswell (creationix) and the Luvit authors
+* Tim Caswell (creationix) and the Rayit authors
 * Aleksandar Kordic
 * Vladimir Dronnikov (dvv)
 
 # LICENSE
 
-   Parts Copyright The Luvit Authors
+   Parts Copyright The Rayit Authors
 
    Copyright 2012 Richard Hundt
 
