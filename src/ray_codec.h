@@ -8,5 +8,7 @@
 int rayL_codec_decode(lua_State* L);
 int rayL_codec_encode(lua_State* L, int narg);
 
+LUALIB_API int luaopen_ray_codec(lua_State* L);
+
 #endif /* _RAY_CODEC_H_ */
 

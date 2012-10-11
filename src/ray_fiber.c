@@ -1,4 +1,7 @@
-#include "ray.h"
+#include "ray_lib.h"
+#include "ray_state.h"
+#include "ray_thread.h"
+#include "ray_fiber.h"
 
 void rayL_fiber_close(ray_fiber_t* fiber) {
   if (fiber->flags & RAY_FDEAD) return;
@@ -85,6 +88,13 @@ static int ray_fiber_new(lua_State* L) {
   return 1;
 }
 
+static int ray_fiber_spawn(lua_State* L) {
+  ray_fiber_new(L);
+  ray_fiber_t* self = (ray_fiber_t*)lua_touserdata(L, 1);
+  rayL_fiber_ready(self);
+  return 1;
+}
+
 int rayL_state_xcopy(ray_state_t* a, ray_state_t* b) {
   int i, narg;
   narg = lua_gettop(a->L);
@@ -135,17 +145,33 @@ static int ray_fiber_tostring(lua_State* L) {
   return 1;
 }
 
-luaL_Reg ray_fiber_funcs[] = {
+static luaL_Reg ray_fiber_funcs[] = {
   {"create",    ray_fiber_new},
+  {"spawn",     ray_fiber_spawn},
   {NULL,        NULL}
 };
 
-luaL_Reg ray_fiber_meths[] = {
+static luaL_Reg ray_fiber_meths[] = {
   {"join",      ray_fiber_join},
   {"ready",     ray_fiber_ready},
   {"__gc",      ray_fiber_free},
   {"__tostring",ray_fiber_tostring},
   {NULL,        NULL}
 };
+
+LUALIB_API int luaopen_ray_fiber(lua_State* L) {
+  rayL_module(L, "ray.fiber", ray_fiber_funcs);
+
+  /* borrow coroutine.yield (fast on LJ2) */
+  lua_getglobal(L, "coroutine");
+  lua_getfield(L, -1, "yield");
+  lua_setfield(L, -3, "yield");
+  lua_pop(L, 1); /* coroutine */
+
+  rayL_class(L, RAY_FIBER_T, ray_fiber_meths);
+  lua_pop(L, 1);
+
+  return 1;
+}
 
 

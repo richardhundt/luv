@@ -11,5 +11,7 @@ int  rayL_fiber_suspend(ray_fiber_t* fiber);
 int  rayL_fiber_resume (ray_fiber_t* fiber, int narg);
 void rayL_fiber_close  (ray_fiber_t* self);
 
-#endif /* _RAY_FIBER_T_
+LUALIB_API int luaopen_ray_fiber(lua_State* L);
+
+#endif /* _RAY_FIBER_T_ */
 

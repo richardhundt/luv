@@ -503,12 +503,77 @@ static int ray_zmq_ctx_free(lua_State* L) {
   return 1;
 }
 
-luaL_Reg ray_zmq_funcs[] = {
+static const ray_const_reg_t ray_zmq_consts[] = {
+  /* ctx options */
+  {"IO_THREADS",        ZMQ_IO_THREADS},
+  {"MAX_SOCKETS",       ZMQ_MAX_SOCKETS},
+
+  /* socket types */
+  {"REQ",               ZMQ_REQ},
+  {"REP",               ZMQ_REP},
+  {"DEALER",            ZMQ_DEALER},
+  {"ROUTER",            ZMQ_ROUTER},
+  {"PUB",               ZMQ_PUB},
+  {"SUB",               ZMQ_SUB},
+  {"PUSH",              ZMQ_PUSH},
+  {"PULL",              ZMQ_PULL},
+  {"PAIR",              ZMQ_PAIR},
+
+  /* socket options */
+  {"SNDHWM",            ZMQ_SNDHWM},
+  {"RCVHWM",            ZMQ_RCVHWM},
+  {"AFFINITY",          ZMQ_AFFINITY},
+  {"IDENTITY",          ZMQ_IDENTITY},
+  {"SUBSCRIBE",         ZMQ_SUBSCRIBE},
+  {"UNSUBSCRIBE",       ZMQ_UNSUBSCRIBE},
+  {"RATE",              ZMQ_RATE},
+  {"RECOVERY_IVL",      ZMQ_RECOVERY_IVL},
+  {"SNDBUF",            ZMQ_SNDBUF},
+  {"RCVBUF",            ZMQ_RCVBUF},
+  {"RCVMORE",           ZMQ_RCVMORE},
+  {"FD",                ZMQ_FD},
+  {"EVENTS",            ZMQ_EVENTS},
+  {"TYPE",              ZMQ_TYPE},
+  {"LINGER",            ZMQ_LINGER},
+  {"RECONNECT_IVL",     ZMQ_RECONNECT_IVL},
+  {"BACKLOG",           ZMQ_BACKLOG},
+  {"RECONNECT_IVL_MAX", ZMQ_RECONNECT_IVL_MAX},
+  {"RCVTIMEO",          ZMQ_RCVTIMEO},
+  {"SNDTIMEO",          ZMQ_SNDTIMEO},
+  {"IPV4ONLY",          ZMQ_IPV4ONLY},
+  {"ROUTER_BEHAVIOR",   ZMQ_ROUTER_BEHAVIOR},
+  {"TCP_KEEPALIVE",     ZMQ_TCP_KEEPALIVE},
+  {"TCP_KEEPALIVE_IDLE",ZMQ_TCP_KEEPALIVE_IDLE},
+  {"TCP_KEEPALIVE_CNT", ZMQ_TCP_KEEPALIVE_CNT},
+  {"TCP_KEEPALIVE_INTVL",ZMQ_TCP_KEEPALIVE_INTVL},
+  {"TCP_ACCEPT_FILTER", ZMQ_TCP_ACCEPT_FILTER},
+
+  /* msg options */
+  {"MORE",              ZMQ_MORE},
+
+  /* send/recv flags */
+  {"DONTWAIT",          ZMQ_DONTWAIT},
+  {"SNDMORE",           ZMQ_SNDMORE},
+
+  /* poll events */
+  {"POLLIN",            ZMQ_POLLIN},
+  {"POLLOUT",           ZMQ_POLLOUT},
+  {"POLLERR",           ZMQ_POLLERR},
+
+  /* devices */
+  {"STREAMER",          ZMQ_STREAMER},
+  {"FORWARDER",         ZMQ_FORWARDER},
+  {"QUEUE",             ZMQ_QUEUE},
+  {NULL,                0}
+};
+
+
+static luaL_Reg ray_zmq_funcs[] = {
   {"create",    ray_zmq_new},
   {NULL,        NULL}
 };
 
-luaL_Reg ray_zmq_ctx_meths[] = {
+static luaL_Reg ray_zmq_ctx_meths[] = {
   {"socket",    ray_zmq_ctx_socket},
   {"__codec",   ray_zmq_ctx_encoder},
   {"__gc",      ray_zmq_ctx_free},
@@ -516,7 +581,7 @@ luaL_Reg ray_zmq_ctx_meths[] = {
   {NULL,        NULL}
 };
 
-luaL_Reg ray_zmq_socket_meths[] = {
+static luaL_Reg ray_zmq_socket_meths[] = {
   {"bind",      ray_zmq_socket_bind},
   {"connect",   ray_zmq_socket_connect},
   {"send",      ray_zmq_socket_send},
@@ -528,5 +593,23 @@ luaL_Reg ray_zmq_socket_meths[] = {
   {"__tostring",ray_zmq_socket_tostring},
   {NULL,        NULL}
 };
+
+
+LUALIB_API rayopen_zmq(lua_State* L) {
+
+  lua_pushcfunction(L, rayL_zmq_ctx_decoder);
+  lua_setfield(L, LUA_REGISTRYINDEX, "ray:zmq:decoder");
+
+  rayL_module(L, "ray_zmq", ray_zmq_funcs);
+  const ray_const_reg_t* c = ray_zmq_consts;
+  for (; c->key; c++) {
+    lua_pushinteger(L, c->val);
+    lua_setfield(L, -2, c->key);
+  }
+  lua_setfield(L, -2, "zmq");
+  rayL_class(L, RAY_ZMQ_CTX_T,    ray_zmq_ctx_meths);
+  rayL_class(L, RAY_ZMQ_SOCKET_T, ray_zmq_socket_meths);
+  lua_pop(L, 2);
+}
 
 

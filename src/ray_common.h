@@ -13,7 +13,7 @@
 #include "uv/include/uv.h"
 #include "ngx-queue.h"
 
-#undef RAY_DEBUG
+#define RAY_DEBUG
 
 #ifdef RAY_DEBUG
 #  define TRACE(fmt, ...) do { \
@@ -64,22 +64,20 @@ typedef union ray_req_u {
 #define RAY_MAX_PATH 1024
 
 /* metatables for various types */
-#define RAY_NS_T          "ray.ns"
-#define RAY_COND_T        "ray.cond"
-#define RAY_FIBER_T       "ray.fiber"
-#define RAY_THREAD_T      "ray.thread"
-#define RAY_ASYNC_T       "ray.async"
-#define RAY_IDLE_T        "ray.idle"
-#define RAY_FS_T          "ray.fs"
-#define RAY_FS_POLL_T     "ray.fs.poll"
-#define RAY_FILE_T        "ray.file"
-#define RAY_PIPE_T        "ray.pipe"
-#define RAY_TTY_T         "ray.tty"
-#define RAY_PROCESS_T     "ray.process"
-#define RAY_NET_TCP_T     "ray.net.tcp"
-#define RAY_NET_UDP_T     "ray.net.udp"
-#define RAY_ZMQ_CTX_T     "ray.zmq.ctx"
-#define RAY_ZMQ_SOCKET_T  "ray.zmq.socket"
+#define RAY_COND_T        "ray.cond.CondVar"
+#define RAY_FIBER_T       "ray.fiber.Fiber"
+#define RAY_THREAD_T      "ray.thread.Thread"
+#define RAY_IDLE_T        "ray.idle.Watcher"
+#define RAY_TIMER_T       "ray.timer.Watcher"
+#define RAY_FS_POLL_T     "ray.fs.Watcher"
+#define RAY_FILE_T        "ray.fs.File"
+#define RAY_PIPE_T        "ray.pipe.Stream"
+#define RAY_PROCESS_T     "ray.process.Process"
+#define RAY_TTY_T         "ray.tty.Stream"
+#define RAY_TCP_T         "ray.tcp.Stream"
+#define RAY_UDP_T         "ray.udp.Socket"
+#define RAY_ZMQ_CTX_T     "ray.zmq.Context"
+#define RAY_ZMQ_SOCKET_T  "ray.zmq.Socket"
 
 #define container_of(ptr, type, member) \
   ((type*) ((char*)(ptr) - offsetof(type, member)))

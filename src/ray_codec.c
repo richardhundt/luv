@@ -1,4 +1,4 @@
-#include "ray_common.h"
+#include "ray_lib.h"
 #include "ray_buf.h"
 #include "ray_codec.h"
 
@@ -369,8 +369,16 @@ static int ray_codec_decode(lua_State* L) {
   return rayL_codec_decode(L);
 }
 
-luaL_Reg ray_codec_funcs[] = {
-  {"encode", ray_codec_encode},
-  {"decode", ray_codec_decode},
+static luaL_Reg ray_codec_funcs[] = {
+  {"encode",  ray_codec_encode},
+  {"decode",  ray_codec_decode},
+  { NULL,      NULL },
 };
+
+LUALIB_API int luaopen_ray_codec(lua_State* L) {
+  rayL_module(L, "ray.codec", ray_codec_funcs);
+  return 1;
+}
+
+
 

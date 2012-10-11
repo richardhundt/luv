@@ -70,4 +70,4 @@ uv_loop_t* rayL_event_loop(lua_State* L);
 
 ray_state_t* rayL_state_self(lua_State* L);
 
-#endif /* _RAY_STATE_H_
+#endif /* _RAY_STATE_H_ */

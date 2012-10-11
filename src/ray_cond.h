@@ -2,6 +2,7 @@
 #define _RAY_COND_H_
 
 #include "ray_common.h"
+#include "ray_state.h"
 
 typedef ngx_queue_t ray_cond_t;
 

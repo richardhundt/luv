@@ -1,5 +1,7 @@
 #include "ray_common.h"
 #include "ray_state.h"
+#include "ray_fiber.h"
+#include "ray_thread.h"
 
 uv_loop_t* rayL_event_loop(lua_State* L) {
   return rayL_state_self(L)->loop;

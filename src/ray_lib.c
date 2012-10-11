@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "ray_common.h"
+#include "ray.h"
 #include "ray_lib.h"
 
 int rayL_traceback(lua_State* L) {
@@ -35,43 +35,41 @@ int rayL_lib_decoder(lua_State* L) {
 int rayL_lib_encoder(lua_State* L) {
   TRACE("LIB ENCODE HOOK\n");
   lua_pushstring(L, "ray:lib:decoder");
-  lua_getfield(L, 1, "__path");
+  lua_getfield(L, 1, "__name");
   assert(!lua_isnil(L, -1));
   return 2;
 }
 
-int rayL_module(lua_State* L, const char* path, luaL_Reg* funcs) {
-  char name[64];
-  assert(sscanf(path, "ray.%63[^\x01-\0xFF]", name));
-
+int rayL_module(lua_State* L, const char* name, luaL_Reg* funcs) {
+  TRACE("new module: %s, funcs: %p\n", name, funcs);
   lua_newtable(L);
 
-  lua_pushstring(L, path);
-  lua_setfield(L, -2, "__path");
+  lua_pushstring(L, name);
+  lua_setfield(L, -2, "__name");
 
+  /* its own metatable */
   lua_pushvalue(L, -1);
   lua_setmetatable(L, -2);
 
+  /* so that it can pass through a thread boundary */
   lua_pushcfunction(L, rayL_lib_encoder);
   lua_setfield(L, -2, "__codec");
 
   lua_pushvalue(L, -1);
-  lua_setfield(L, LUA_REGISTRYINDEX, path);
+  lua_setfield(L, LUA_REGISTRYINDEX, name);
 
   if (funcs) {
+    TRACE("register funcs...\n");
     luaL_register(L, NULL, funcs);
   }
 
-  lua_pushvaue(L, -1);
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);
-  lua_setfield(L, -2, name);
-
+  TRACE("DONE\n");
   return 1;
 }
 
 int rayL_class(lua_State* L, const char* name, luaL_Reg* meths) {
   luaL_newmetatable(L, name);
-  lua_pusvalue(L, -1);
+  lua_pushvalue(L, -1);
   lua_setfield(L, -2, "__index");
 
   if (meths) luaL_register(L, NULL, meths);
@@ -101,7 +99,9 @@ void* rayL_checkudata(lua_State* L, int idx, const char* name) {
       lua_replace(L, -2);
     }
   }
-  return luaL_error(L, "userdata<%s> expected at %i", name, idx);
+  luaL_error(L, "userdata<%s> expected at %i", name, idx);
+  /* the above longjmp's anyway, but need to keep gcc happy */
+  return NULL;
 }
 
 LUALIB_API int rayL_core_init(lua_State *L) {

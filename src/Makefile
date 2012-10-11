@@ -25,20 +25,23 @@ endif
 #SRCS := $(wildcard *.c)
 #SRCS := ray.c ray_object.c ray_cond.c ray_core.c ray_fs.c ray_timer.c ray_stream.c ray_net.c ray_zmq.c ray_thread.c
 SRCS := ray.c \
+	ray_lib.c \
 	ray_cond.c \
 	ray_state.c \
 	ray_fiber.c \
 	ray_thread.c \
+	ray_buf.c \
 	ray_codec.c \
-	ray_object.c \
-	ray_timer.c \
-	ray_idle.c \
-	ray_fs.c \
-	ray_stream.c \
-	ray_pipe.c \
-	ray_net.c \
-	ray_process.c \
-	ray_zmq.c
+#	ray_object.c \
+#	ray_timer.c \
+#	ray_idle.c \
+#	ray_fs.c \
+#	ray_stream.c \
+#	ray_pipe.c \
+#	ray_net.c \
+#	ray_process.c \
+#	ray_zmq.c
+
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 
 all: ray.so libray.a

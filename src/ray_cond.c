@@ -1,4 +1,6 @@
-#include "ray.h"
+#include "ray_common.h"
+#include "ray_state.h"
+#include "ray_cond.h"
 
 int rayL_cond_init(ray_cond_t* cond) {
   ngx_queue_init(cond);

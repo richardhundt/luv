@@ -1,6 +1,9 @@
-#include "ray_common.h"
+#include "ray.h"
+#include "ray_lib.h"
+#include "ray_codec.h"
 #include "ray_state.h"
 #include "ray_thread.h"
+#include "ray_fiber.h"
 
 void rayL_thread_ready(ray_thread_t* self) {
   if (!(self->flags & RAY_FREADY)) {
@@ -171,7 +174,7 @@ static void _async_cb(uv_async_t* handle, int status) {
   (void)status;
 }
 
-void rayL_thread_init_main(lua_State* L) {
+void rayL_thread_init(lua_State* L) {
   ray_thread_t* self = (ray_thread_t*)lua_newuserdata(L, sizeof(ray_thread_t));
   luaL_getmetatable(L, RAY_THREAD_T);
   lua_setmetatable(L, -2);
@@ -273,9 +276,10 @@ ray_thread_t* rayL_thread_new(ray_state_t* outer, int narg) {
 static int ray_thread_new(lua_State* L) {
   ray_state_t* outer = rayL_state_self(L);
   int narg = lua_gettop(L);
-  rayL_thread_create(outer, narg);
+  rayL_thread_new(outer, narg);
   return 1;
 }
+
 static int ray_thread_join(lua_State* L) {
   ray_thread_t* self = (ray_thread_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   ray_thread_t* curr = rayL_thread_self(L);
@@ -306,15 +310,23 @@ static int ray_thread_tostring(lua_State* L) {
   return 1;
 }
 
-luaL_Reg ray_thread_funcs[] = {
+static luaL_Reg ray_thread_funcs[] = {
   {"spawn",     ray_thread_new},
   {NULL,        NULL}
 };
 
-luaL_Reg ray_thread_meths[] = {
+static luaL_Reg ray_thread_meths[] = {
   {"join",      ray_thread_join},
   {"__gc",      ray_thread_free},
   {"__tostring",ray_thread_tostring},
   {NULL,        NULL}
 };
+
+LUALIB_API int luaopen_ray_thread(lua_State* L) {
+  rayL_module(L, "ray.thread", ray_thread_funcs);
+  rayL_class (L, RAY_THREAD_T, ray_thread_meths);
+  rayL_thread_init(L);
+  lua_pop(L, 1);
+  return 1;
+}
 

@@ -8,13 +8,21 @@ extern "C" {
 #include "lualib.h"
 #include "lauxlib.h"
 
+#include "ray.h"
 #include "ray_lib.h"
+#include "ray_common.h"
+#include "ray_cond.h"
+#include "ray_codec.h"
+#include "ray_state.h"
+#include "ray_fiber.h"
+#include "ray_thread.h"
+#include "ray_object.h"
 
-static int MAIN_INITIALIZED = 0;
 static void _sleep_cb(uv_timer_t* handle, int status) {
   rayL_state_ready((ray_state_t*)handle->data);
   free(handle);
 }
+
 static int ray_sleep(lua_State* L) {
   lua_Number timeout = luaL_checknumber(L, 1);
   ray_state_t* state = rayL_state_self(L);
@@ -142,7 +150,7 @@ static int ray_interface_addresses(lua_State* L) {
   return 1;
 }
 
-luaL_Reg ray_funcs[] = {
+static luaL_Reg ray_funcs[] = {
   {"cpu_info",            ray_cpu_info},
   {"mem_free",            ray_mem_free},
   {"mem_total",           ray_mem_total},
@@ -153,124 +161,33 @@ luaL_Reg ray_funcs[] = {
   {NULL,            NULL}
 };
 
-static const ray_const_reg_t ray_zmq_consts[] = {
-  /* ctx options */
-  {"IO_THREADS",        ZMQ_IO_THREADS},
-  {"MAX_SOCKETS",       ZMQ_MAX_SOCKETS},
-
-  /* socket types */
-  {"REQ",               ZMQ_REQ},
-  {"REP",               ZMQ_REP},
-  {"DEALER",            ZMQ_DEALER},
-  {"ROUTER",            ZMQ_ROUTER},
-  {"PUB",               ZMQ_PUB},
-  {"SUB",               ZMQ_SUB},
-  {"PUSH",              ZMQ_PUSH},
-  {"PULL",              ZMQ_PULL},
-  {"PAIR",              ZMQ_PAIR},
-
-  /* socket options */
-  {"SNDHWM",            ZMQ_SNDHWM},
-  {"RCVHWM",            ZMQ_RCVHWM},
-  {"AFFINITY",          ZMQ_AFFINITY},
-  {"IDENTITY",          ZMQ_IDENTITY},
-  {"SUBSCRIBE",         ZMQ_SUBSCRIBE},
-  {"UNSUBSCRIBE",       ZMQ_UNSUBSCRIBE},
-  {"RATE",              ZMQ_RATE},
-  {"RECOVERY_IVL",      ZMQ_RECOVERY_IVL},
-  {"SNDBUF",            ZMQ_SNDBUF},
-  {"RCVBUF",            ZMQ_RCVBUF},
-  {"RCVMORE",           ZMQ_RCVMORE},
-  {"FD",                ZMQ_FD},
-  {"EVENTS",            ZMQ_EVENTS},
-  {"TYPE",              ZMQ_TYPE},
-  {"LINGER",            ZMQ_LINGER},
-  {"RECONNECT_IVL",     ZMQ_RECONNECT_IVL},
-  {"BACKLOG",           ZMQ_BACKLOG},
-  {"RECONNECT_IVL_MAX", ZMQ_RECONNECT_IVL_MAX},
-  {"RCVTIMEO",          ZMQ_RCVTIMEO},
-  {"SNDTIMEO",          ZMQ_SNDTIMEO},
-  {"IPV4ONLY",          ZMQ_IPV4ONLY},
-  {"ROUTER_BEHAVIOR",   ZMQ_ROUTER_BEHAVIOR},
-  {"TCP_KEEPALIVE",     ZMQ_TCP_KEEPALIVE},
-  {"TCP_KEEPALIVE_IDLE",ZMQ_TCP_KEEPALIVE_IDLE},
-  {"TCP_KEEPALIVE_CNT", ZMQ_TCP_KEEPALIVE_CNT},
-  {"TCP_KEEPALIVE_INTVL",ZMQ_TCP_KEEPALIVE_INTVL},
-  {"TCP_ACCEPT_FILTER", ZMQ_TCP_ACCEPT_FILTER},
-
-  /* msg options */
-  {"MORE",              ZMQ_MORE},
-
-  /* send/recv flags */
-  {"DONTWAIT",          ZMQ_DONTWAIT},
-  {"SNDMORE",           ZMQ_SNDMORE},
-
-  /* poll events */
-  {"POLLIN",            ZMQ_POLLIN},
-  {"POLLOUT",           ZMQ_POLLOUT},
-  {"POLLERR",           ZMQ_POLLERR},
-
-  /* devices */
-  {"STREAMER",          ZMQ_STREAMER},
-  {"FORWARDER",         ZMQ_FORWARDER},
-  {"QUEUE",             ZMQ_QUEUE},
-  {NULL,                0}
-};
-
 LUALIB_API int luaopen_ray(lua_State *L) {
 
 #ifndef WIN32
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  int i;
-  uv_loop_t*    loop;
-  ray_state_t*  curr;
-  ray_object_t* stdfh;
-
   lua_settop(L, 0);
 
-  /* register decoders */
+  /* register lib __codec hook */
   lua_pushcfunction(L, rayL_lib_decoder);
   lua_setfield(L, LUA_REGISTRYINDEX, "ray:lib:decoder");
 
-  lua_pushcfunction(L, rayL_zmq_ctx_decoder);
-  lua_setfield(L, LUA_REGISTRYINDEX, "ray:zmq:decoder");
-
   /* ray */
-  rayL_new_module(L, "ray", ray_funcs);
+  rayL_module(L, "ray", ray_funcs);
   lua_pushvalue(L, -1);
   lua_setfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);
 
-  /* ray.thread */
-  rayL_new_module(L, "ray_thread", ray_thread_funcs);
-  lua_setfield(L, -2, "thread");
-  rayL_new_class(L, RAY_THREAD_T, ray_thread_meths);
-  lua_pop(L, 1);
+  lua_checkstack(L, 20);
+  TRACE("opening thread, top: %i...\n", lua_gettop(L));
+  luaopen_ray_thread(L);
+  TRACE("opening fiber, top: %i...\n", lua_gettop(L));
+  luaopen_ray_fiber(L);
+  TRACE("opening codec, top: %i...\n", lua_gettop(L));
+  luaopen_ray_codec(L);
+  TRACE("OK\n");
 
-  if (!MAIN_INITIALIZED) {
-    rayL_thread_init_main(L);
-    lua_pop(L, 1);
-  }
-
-  /* ray.fiber */
-  rayL_new_module(L, "ray_fiber", ray_fiber_funcs);
-
-  /* borrow coroutine.yield (fast on LJ2) */
-  lua_getglobal(L, "coroutine");
-  lua_getfield(L, -1, "yield");
-  lua_setfield(L, -3, "yield");
-  lua_pop(L, 1); /* coroutine */
-
-  lua_setfield(L, -2, "fiber");
-
-  rayL_new_class(L, RAY_FIBER_T, ray_fiber_meths);
-  lua_pop(L, 1);
-
-  /* ray.codec */
-  rayL_new_module(L, "ray_codec", ray_codec_funcs);
-  lua_setfield(L, -2, "codec");
-
+#ifdef CHEESE
   /* ray.timer */
   rayopen_timer(L);
 
@@ -333,18 +250,10 @@ LUALIB_API int luaopen_ray(lua_State *L) {
   lua_pop(L, 1);
 
   /* ray.zmq */
-  rayL_new_module(L, "ray_zmq", ray_zmq_funcs);
-  const ray_const_reg_t* c = ray_zmq_consts;
-  for (; c->key; c++) {
-    lua_pushinteger(L, c->val);
-    lua_setfield(L, -2, c->key);
-  }
-  lua_setfield(L, -2, "zmq");
-  rayL_new_class(L, RAY_ZMQ_CTX_T, ray_zmq_ctx_meths);
-  rayL_new_class(L, RAY_ZMQ_SOCKET_T, ray_zmq_socket_meths);
-  lua_pop(L, 2);
+#endif
 
   lua_settop(L, 1);
+  TRACE("HERE?\n");
   return 1;
 }
 
