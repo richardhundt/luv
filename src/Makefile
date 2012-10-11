@@ -23,31 +23,31 @@ LDFLAGS+=-shared -lrt -lstdc++
 endif
 
 #SRCS := $(wildcard *.c)
-#SRCS := luv.c luv_object.c luv_cond.c luv_core.c luv_fs.c luv_timer.c luv_stream.c luv_net.c luv_zmq.c luv_thread.c
-SRCS := luv.c \
-	luv_cond.c \
-	luv_state.c \
-	luv_fiber.c \
-	luv_thread.c \
-	luv_codec.c \
-	luv_object.c \
-	luv_timer.c \
-	luv_idle.c \
-	luv_fs.c \
-	luv_stream.c \
-	luv_pipe.c \
-	luv_net.c \
-	luv_process.c \
-	luv_zmq.c
+#SRCS := ray.c ray_object.c ray_cond.c ray_core.c ray_fs.c ray_timer.c ray_stream.c ray_net.c ray_zmq.c ray_thread.c
+SRCS := ray.c \
+	ray_cond.c \
+	ray_state.c \
+	ray_fiber.c \
+	ray_thread.c \
+	ray_codec.c \
+	ray_object.c \
+	ray_timer.c \
+	ray_idle.c \
+	ray_fs.c \
+	ray_stream.c \
+	ray_pipe.c \
+	ray_net.c \
+	ray_process.c \
+	ray_zmq.c
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 
-all: luv.so libluv.a
+all: ray.so libray.a
 
-luv.so: libs $(OBJS)
-	$(CC) $(OBJS) ./uv/uv.a ./zmq/src/.libs/libzmq.a -o luv.so $(LDFLAGS)
+ray.so: libs $(OBJS)
+	$(CC) $(OBJS) ./uv/uv.a ./zmq/src/.libs/libzmq.a -o ray.so $(LDFLAGS)
 
-libluv.a: libs $(OBJS)
-	$(AR) -rcs libluv.a *.o ./uv/src/*.o ./uv/src/*/*.o ./uv/src/*/*/*.o ./zmq/src/*.o
+libray.a: libs $(OBJS)
+	$(AR) -rcs libray.a *.o ./uv/src/*.o ./uv/src/*/*.o ./uv/src/*/*/*.o ./zmq/src/*.o
 
 $(OBJS) :
 	$(CC) -c $(CFLAGS) $(SRCS)
