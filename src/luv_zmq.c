@@ -269,7 +269,7 @@ static const char* LUV_ZMQ_SOCKOPTS[] = {
 static int luv_zmq_socket_setsockopt(lua_State* L) {
   luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   int opt, rv;
-  if (lua_isstring(L, 2)) {
+  if (lua_type(L, 2) == LUA_TSTRING) {
     opt = luaL_checkoption(L, 2, NULL, LUV_ZMQ_SOCKOPTS);
   }
   else {
@@ -353,7 +353,7 @@ static int luv_zmq_socket_getsockopt(lua_State* L) {
   luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_ZMQ_SOCKET_T);
   size_t len;
   int opt;
-  if (lua_isstring(L, 2)) {
+  if (lua_type(L, 2) == LUA_TSTRING) {
     opt = luaL_checkoption(L, 2, NULL, LUV_ZMQ_SOCKOPTS);
   }
   else {
