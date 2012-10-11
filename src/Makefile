@@ -1,3 +1,10 @@
+#
+# configuration
+#
+# comment out to not include zmq. may be useful for embedded devices
+#USE_ZMQ := 1
+
+##########
 
 LUADIR = /usr/local/include/luajit-2.0
 
@@ -5,21 +12,27 @@ COPT = -O2 -fPIC
 
 CWARNS = -Wall
 
-CFLAGS = $(CWARNS) $(COPT) -I$(LUADIR) -I./uv/include -I./zmq/include
+CFLAGS += $(CWARNS) $(COPT) -I$(LUADIR) -I./uv/include
+ifdef USE_ZMQ
+CFLAGS += -I./zmq/include
+endif
 
-OS_NAME=$(shell uname -s)
-MH_NAME=$(shell uname -m)
+OS_NAME = $(shell uname -s)
+MH_NAME = $(shell uname -m)
 
-LDFLAGS=-lm -ldl -lpthread
+LDFLAGS += -lm -ldl -lpthread
 
 AR = ar
 
 ifeq ($(OS_NAME), Darwin)
-LDFLAGS+=-bundle -undefined dynamic_lookup -framework CoreServices
+LDFLAGS += -bundle -undefined dynamic_lookup -framework CoreServices
 ifeq ($(MH_NAME), x86_64)
 endif
 else
-LDFLAGS+=-shared -lrt -lstdc++
+LDFLAGS += -shared -lrt
+ifdef USE_ZMQ
+LDFLAGS += -lstdc++
+endif
 endif
 
 #SRCS := $(wildcard *.c)
@@ -37,26 +50,36 @@ SRCS := luv.c \
 	luv_stream.c \
 	luv_pipe.c \
 	luv_net.c \
-	luv_process.c \
-	luv_zmq.c
+	luv_process.c
+ifdef USE_ZMQ
+SRCS += luv_zmq.c
+endif
 OBJS := $(patsubst %.c,%.o,$(SRCS))
+
+LIBS = ./uv/uv.a
+ifdef USE_ZMQ
+LIBS += ./zmq/src/.libs/libzmq.a
+endif
 
 all: luv.so libluv.a
 
-luv.so: libs $(OBJS)
-	$(CC) $(OBJS) ./uv/uv.a ./zmq/src/.libs/libzmq.a -o luv.so $(LDFLAGS)
+luv.so: $(OBJS) $(LIBS)
+	$(CC) -o $@ $^ $(LDFLAGS)
 
-libluv.a: libs $(OBJS)
-	$(AR) -rcs libluv.a *.o ./uv/src/*.o ./uv/src/*/*.o ./uv/src/*/*/*.o ./zmq/src/*.o
+libluv.a: $(OBJS) $(LIBS)
+	$(AR) -rcs $@ $^
 
-$(OBJS) :
+$(OBJS):
 	$(CC) -c $(CFLAGS) $(SRCS)
 
-libs: ./zmq/Makefile
+uv/uv.a:
 	$(MAKE) CFLAGS="-fPIC" -C ./uv
+
+zmq/src/.libs/libzmq.a: zmq/Makefile
 	$(MAKE) CXXFLAGS="-fPIC" -C ./zmq
 
-./zmq/Makefile:
+zmq/Makefile:
+	# N.B. this requires auto* tools which is PITA for embedded systems
 	cd ./zmq && ./autogen.sh && ./configure
 
 clean:
@@ -67,4 +90,3 @@ realclean: clean
 	$(MAKE) -C ./zmq clean
 
 .PHONY: all clean realclean
-
