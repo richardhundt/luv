@@ -314,8 +314,10 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   lua_pushcfunction(L, luvL_lib_decoder);
   lua_setfield(L, LUA_REGISTRYINDEX, "luv:lib:decoder");
 
+#ifdef USE_ZMQ
   lua_pushcfunction(L, luvL_zmq_ctx_decoder);
   lua_setfield(L, LUA_REGISTRYINDEX, "luv:zmq:decoder");
+#endif
 
   /* luv */
   luvL_new_module(L, "luv", luv_funcs);
@@ -414,6 +416,7 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   lua_pop(L, 1);
 
   /* luv.zmq */
+#ifdef USE_ZMQ
   luvL_new_module(L, "luv_zmq", luv_zmq_funcs);
   const luv_const_reg_t* c = luv_zmq_consts;
   for (; c->key; c++) {
@@ -424,6 +427,7 @@ LUALIB_API int luaopen_luv(lua_State *L) {
   luvL_new_class(L, LUV_ZMQ_CTX_T, luv_zmq_ctx_meths);
   luvL_new_class(L, LUV_ZMQ_SOCKET_T, luv_zmq_socket_meths);
   lua_pop(L, 2);
+#endif
 
   lua_settop(L, 1);
   return 1;

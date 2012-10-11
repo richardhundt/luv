@@ -296,9 +296,11 @@ extern luaL_Reg luv_pipe_meths[32];
 extern luaL_Reg luv_process_funcs[32];
 extern luaL_Reg luv_process_meths[32];
 
+#ifdef USE_ZMQ
 extern luaL_Reg luv_zmq_funcs[32];
 extern luaL_Reg luv_zmq_ctx_meths[32];
 extern luaL_Reg luv_zmq_socket_meths[32];
+#endif
 
 #ifdef WIN32
 #  ifdef LUV_EXPORT
