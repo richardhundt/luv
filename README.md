@@ -788,7 +788,7 @@ cons:join()
 
 # LICENSE
 
-   Parts Copyright The Rayit Authors
+   Parts Copyright The Luvit Authors
 
    Copyright 2012 Richard Hundt
 
