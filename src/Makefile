@@ -2,7 +2,7 @@
 # configuration
 #
 # comment out to not include zmq. may be useful for embedded devices
-#USE_ZMQ := 1
+USE_ZMQ := 1
 
 ##########
 
@@ -56,12 +56,13 @@ SRCS += luv_zmq.c
 endif
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 
-LIBS = ./uv/uv.a
+LIBS = uv/libuv.a
 ifdef USE_ZMQ
-LIBS += ./zmq/src/.libs/libzmq.a
+LIBS += zmq/src/.libs/libzmq.a
 endif
 
 all: luv.so libluv.a
+deps: $(LIBS)
 
 luv.so: $(OBJS) $(LIBS)
 	$(CC) -o $@ $^ $(LDFLAGS)
@@ -72,7 +73,7 @@ libluv.a: $(OBJS) $(LIBS)
 $(OBJS):
 	$(CC) -c $(CFLAGS) $(SRCS)
 
-uv/uv.a:
+uv/libuv.a:
 	$(MAKE) CFLAGS="-fPIC" -C ./uv
 
 zmq/src/.libs/libzmq.a: zmq/Makefile
@@ -80,7 +81,7 @@ zmq/src/.libs/libzmq.a: zmq/Makefile
 
 zmq/Makefile:
 	# N.B. this requires auto* tools which is PITA for embedded systems
-	cd ./zmq && ./autogen.sh && ./configure
+	cd ./zmq && ./autogen.sh && ./configure --disable-shared
 
 clean:
 	rm -f *.o *.so *.a
@@ -89,4 +90,5 @@ realclean: clean
 	$(MAKE) -C ./uv clean
 	$(MAKE) -C ./zmq clean
 
-.PHONY: all clean realclean
+.PHONY: all clean realclean deps
+.SILENT:
