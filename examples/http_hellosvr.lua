@@ -1,3 +1,4 @@
+pcall(require, 'luarocks.loader') -- honor luarocks search path
 local luv = require('luv')
 
 local http_parser = require('http.parser')
