@@ -1,4 +1,6 @@
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_object.h"
+#include "luv_pipe.h"
 
 static void _idle_cb(uv_idle_t* handle, int status) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
@@ -12,15 +14,10 @@ static void _idle_cb(uv_idle_t* handle, int status) {
   luvL_cond_broadcast(&self->rouse);
 }
 
-static int luv_new_idle(lua_State* L) {
-  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
-  luaL_getmetatable(L, LUV_IDLE_T);
-  lua_setmetatable(L, -2);
-
-  luv_state_t* curr = luvL_state_self(L);
-  uv_idle_init(luvL_event_loop(L), &self->h.idle);
-  luvL_object_init(curr, self);
-
+static int luv_idle_new(lua_State* L) {
+  luv_object_t* self = luvL_object_new(L, LUV_IDLE_T);
+  luvL_object_listen(self, idle, _idle_cb);
+  uv_idle_init(curr->loop, &self->h.idle);
   return 1;
 }
 
@@ -56,7 +53,7 @@ static int luv_idle_tostring(lua_State *L) {
 }
 
 luaL_Reg luv_idle_funcs[] = {
-  {"create",    luv_new_idle},
+  {"create",    luv_idle_new},
   {NULL,        NULL}
 };
 

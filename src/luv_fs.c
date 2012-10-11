@@ -5,7 +5,7 @@
 #include <unistd.h>
 #endif
 
-#include "luv.h"
+#include "luv_common.h"
 
 /* lifted from luvit */
 static int luv_string_to_flags(lua_State* L, const char* str) {

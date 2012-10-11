@@ -1,11 +1,37 @@
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_timer.h"
+
+int luvL_timer_init(luv_object_t* self) {
+  self->hash = luvL_hash_new(16);
+  return uv_timer_init(self->loop, &self->h.timer);
+}
 
 static void _timer_cb(uv_timer_t* handle, int status) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
-  ngx_queue_t* q;
+  luv_event_cb  cb   = (luv_event_cb)luvL_hash_lookup(self->hash, "on_timer");
+  cb(self, NULL);
+}
+
+int luvL_timer_start(luv_object_t* self, luv_event_cb cb, int64_t timeout, int64_t repeat) {
+  luvL_hash_set(self->hash, "on_timer", (void*)cb);
+  luvL_hash_set(self->hash, "timeout",  (void*)timeout);
+  luvL_hash_set(self->hash, "repeat",   (void*)repeat);
+  return uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
+}
+
+
+/* Lua API */
+static int luv_timer_new(lua_State* L) {
+  luv_object_t* self = luvL_object_new(L, LUV_TIMER_T);
+  luvL_timer_init(L, self);
+  return 1;
+}
+
+static void _luv_timer_cb(luv_object_t* self, void* arg) {
+  luv_list_t*  q;
   luv_state_t* s;
-  ngx_queue_foreach(q, &self->rouse) {
-    s = ngx_queue_data(q, luv_state_t, cond);
+  luvL_list_foreach(q, &self->rouse) {
+    s = luvL_list_data(q, luv_state_t, cond);
     TRACE("rouse %p\n", s);
     lua_settop(s->L, 0);
     lua_pushinteger(s->L, status);
@@ -13,24 +39,11 @@ static void _timer_cb(uv_timer_t* handle, int status) {
   luvL_cond_broadcast(&self->rouse);
 }
 
-static int luv_new_timer(lua_State* L) {
-  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
-  luaL_getmetatable(L, LUV_TIMER_T);
-  lua_setmetatable(L, -2);
-
-  luv_state_t* curr = luvL_state_self(L);
-  uv_timer_init(luvL_event_loop(L), &self->h.timer);
-  luvL_object_init(curr, self);
-
-  return 1;
-}
-
-/* methods */
 static int luv_timer_start(lua_State* L) {
-  luv_object_t* self = (luv_object_t*)luaL_checkudata(L, 1, LUV_TIMER_T);
+  luv_object_t* self = luvL_object_check(L, 1, LUV_TIMER_T);
   int64_t timeout = luaL_optlong(L, 2, 0L);
   int64_t repeat  = luaL_optlong(L, 3, 0L);
-  int rv = uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
+  int rv = luvL_timer_start(self, _luv_timer_cb, timeout, repeat);
   lua_pushinteger(L, rv);
   return 1;
 }
@@ -65,7 +78,7 @@ static int luv_timer_tostring(lua_State *L) {
 }
 
 luaL_Reg luv_timer_funcs[] = {
-  {"create",    luv_new_timer},
+  {"create",    luv_timer_new},
   {NULL,        NULL}
 };
 

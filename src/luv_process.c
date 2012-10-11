@@ -8,6 +8,7 @@ void _exit_cb(uv_process_t* handle, int status, int sigterm) {
     TRACE("ERROR: %s\n", uv_strerror(uv_last_error(self->state->loop)));
   }
 
+  /* TODO: fix these self->state accesses */
   lua_State* L = self->state->L;
   lua_pushinteger(L, status);
   lua_pushinteger(L, sigterm);

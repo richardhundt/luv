@@ -1,14 +1,17 @@
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_object.h"
+#include "luv_state.h"
+#include "luv_stream.h"
 
 /* used by udp and stream */
-uv_buf_t luvL_alloc_cb(uv_handle_t* handle, size_t size) {
+uv_buf_t luv__alloc_cb(uv_handle_t* handle, size_t size) {
   luv_object_t* self = container_of(handle, luv_object_t, h);
   size = (size_t)self->buf.len;
   return uv_buf_init((char*)malloc(size), size);
 }
 
 /* used by tcp and pipe */
-void luvL_connect_cb(uv_connect_t* req, int status) {
+void luv__connect_cb(uv_connect_t* req, int status) {
   luv_state_t* state = container_of(req, luv_state_t, req);
   luvL_state_ready(state);
 }
@@ -160,7 +163,7 @@ static int luv_stream_accept(lua_State *L) {
 int luvL_stream_start(luv_object_t* self) {
   if (!luvL_object_is_started(self)) {
     self->flags |= LUV_OSTARTED;
-    return uv_read_start(&self->h.stream, luvL_alloc_cb, _read_cb);
+    return uv_read_start(&self->h.stream, luv__alloc_cb, _read_cb);
   }
   return 0;
 }

@@ -37,7 +37,7 @@ int luvL_cond_broadcast(luv_cond_t* cond) {
   return roused;
 }
 
-static int luv_new_cond(lua_State* L) {
+static int luv_cond_new(lua_State* L) {
   luv_cond_t* cond = (luv_cond_t*)lua_newuserdata(L, sizeof(luv_cond_t));
 
   lua_pushvalue(L, 1);
@@ -84,7 +84,7 @@ static int luv_cond_tostring(lua_State *L) {
 }
 
 luaL_Reg luv_cond_funcs[] = {
-  {"create",    luv_new_cond}
+  {"create",    luv_cond_new}
 };
 
 luaL_Reg luv_cond_meths[] = {

@@ -1,10 +1,8 @@
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_state.h"
 
-int luvL_state_is_thread(luv_state_t* state) {
-  return state->type == LUV_TTHREAD;
-}
-int luvL_state_in_thread(luv_state_t* state) {
-  return state->type == LUV_TTHREAD;
+uv_loop_t* luvL_event_loop(lua_State* L) {
+  return luvL_state_self(L)->loop;
 }
 
 luv_state_t* luvL_state_self(lua_State* L) {
@@ -13,10 +11,6 @@ luv_state_t* luvL_state_self(lua_State* L) {
   luv_state_t* self = (luv_state_t*)lua_touserdata(L, -1);
   lua_pop(L, 1);
   return self;
-}
-
-int luvL_state_is_active(luv_state_t* state) {
-  return state == luvL_thread_self(state->L)->curr;
 }
 
 /* resume at the next iteration of the loop */
@@ -59,3 +53,4 @@ int luvL_state_resume(luv_state_t* state, int narg) {
     return luvL_fiber_resume((luv_fiber_t*)state, narg);
   }
 }
+

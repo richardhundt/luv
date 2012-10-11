@@ -38,7 +38,7 @@ int luvL_fiber_resume(luv_fiber_t* self, int narg) {
   return lua_resume(self->L, narg);
 }
 
-luv_fiber_t* luvL_fiber_create(luv_state_t* outer, int narg) {
+luv_fiber_t* luvL_fiber_new(luv_state_t* outer, int narg) {
   TRACE("spawn fiber as child of: %p\n", outer);
 
   luv_fiber_t* self;
@@ -78,9 +78,9 @@ luv_fiber_t* luvL_fiber_create(luv_state_t* outer, int narg) {
 }
 
 /* Lua API */
-static int luv_new_fiber(lua_State* L) {
+static int luv_fiber_new(lua_State* L) {
   luv_state_t* outer = luvL_state_self(L);
-  luvL_fiber_create(outer, lua_gettop(L));
+  luvL_fiber_new(outer, lua_gettop(L));
   assert(lua_gettop(L) == 1);
   return 1;
 }
@@ -136,7 +136,7 @@ static int luv_fiber_tostring(lua_State* L) {
 }
 
 luaL_Reg luv_fiber_funcs[] = {
-  {"create",    luv_new_fiber},
+  {"create",    luv_fiber_new},
   {NULL,        NULL}
 };
 

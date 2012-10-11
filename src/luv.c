@@ -8,86 +8,9 @@ extern "C" {
 #include "lualib.h"
 #include "lauxlib.h"
 
-#ifdef __cplusplus
-}
-#endif
-
-
-#include "luv.h"
+#include "luv_lib.h"
 
 static int MAIN_INITIALIZED = 0;
-
-int luvL_traceback(lua_State* L) {
-  lua_getfield(L, LUA_GLOBALSINDEX, "debug");
-  if (!lua_istable(L, -1)) {
-    lua_pop(L, 1);
-    return 1;
-  }
-  lua_getfield(L, -1, "traceback");
-  if (!lua_isfunction(L, -1)) {
-    lua_pop(L, 2);
-    return 1;
-  }
-
-  lua_pushvalue(L, 1);    /* pass error message */
-  lua_pushinteger(L, 2);  /* skip this function and traceback */
-  lua_call(L, 2, 1);      /* call debug.traceback */
-
-  return 1;
-}
-
-int luvL_lib_decoder(lua_State* L) {
-  const char* name = lua_tostring(L, -1);
-  lua_getfield(L, LUA_REGISTRYINDEX, name);
-  TRACE("LIB DECODE HOOK: %s\n", name);
-  assert(lua_istable(L, -1));
-  return 1;
-}
-
-/* return "luv:lib:decoder", <modname> */
-int luvL_lib_encoder(lua_State* L) {
-  TRACE("LIB ENCODE HOOK\n");
-  lua_pushstring(L, "luv:lib:decoder");
-  lua_getfield(L, 1, "__name");
-  assert(!lua_isnil(L, -1));
-  return 2;
-}
-
-int luvL_new_module(lua_State* L, const char* name, luaL_Reg* funcs) {
-  lua_newtable(L);
-
-  lua_pushstring(L, name);
-  lua_setfield(L, -2, "__name");
-
-  lua_pushvalue(L, -1);
-  lua_setmetatable(L, -2);
-
-  lua_pushcfunction(L, luvL_lib_encoder);
-  lua_setfield(L, -2, "__codec");
-
-  lua_pushvalue(L, -1);
-  lua_setfield(L, LUA_REGISTRYINDEX, name);
-
-  if (funcs) {
-    luaL_register(L, NULL, funcs);
-  }
-  return 1;
-}
-
-int luvL_new_class(lua_State* L, const char* name, luaL_Reg* meths) {
-  luaL_newmetatable(L, name);
-  lua_pushvalue(L, -1);
-  lua_setfield(L, -2, "__index");
-  if (meths) {
-    luaL_register(L, NULL, meths);
-  }
-  return 1;
-}
-
-uv_loop_t* luvL_event_loop(lua_State* L) {
-  return luvL_state_self(L)->loop;
-}
-
 static void _sleep_cb(uv_timer_t* handle, int status) {
   luvL_state_ready((luv_state_t*)handle->data);
   free(handle);
@@ -294,9 +217,6 @@ static const luv_const_reg_t luv_zmq_consts[] = {
   {NULL,                0}
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 LUALIB_API int luaopen_luv(lua_State *L) {
 
 #ifndef WIN32
@@ -319,6 +239,8 @@ LUALIB_API int luaopen_luv(lua_State *L) {
 
   /* luv */
   luvL_new_module(L, "luv", luv_funcs);
+  lua_pushvalue(L, -1);
+  lua_setfield(L, LUA_REGISTRYINDEX, LUV_REG_KEY);
 
   /* luv.thread */
   luvL_new_module(L, "luv_thread", luv_thread_funcs);

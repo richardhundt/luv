@@ -1,9 +1,8 @@
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_object.h"
 
-static int luv_new_pipe(lua_State* L) {
-  luv_object_t* self = (luv_object_t*)lua_newuserdata(L, sizeof(luv_object_t));
-  luaL_getmetatable(L, LUV_PIPE_T);
-  lua_setmetatable(L, -2);
+static int luv_pipe_new(lua_State* L) {
+  luv_object_t* self = luvL_object_new(L, LUV_PIPE_T);
   int ipc = 0;
   if (!lua_isnoneornil(L, 2)) {
     luaL_checktype(L, 2, LUA_TBOOLEAN);
@@ -56,7 +55,7 @@ static int luv_pipe_tostring(lua_State *L) {
 }
 
 luaL_Reg luv_pipe_funcs[] = {
-  {"create",      luv_new_pipe},
+  {"create",      luv_pipe_new},
   {NULL,          NULL}
 };
 

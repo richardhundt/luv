@@ -1,7 +1,8 @@
 #include "zmq.h"
 #include "zmq_utils.h"
 
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_zmq.h"
 
 int luvL_zmq_socket_readable(void* socket) {
   zmq_pollitem_t items[1];
@@ -114,7 +115,7 @@ static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
 
 
 /* Lua API */
-static int luv_new_zmq(lua_State* L) {
+static int luv_zmq_new(lua_State* L) {
   luv_thread_t* thread = luvL_thread_self(L);
   int nthreads = luaL_optinteger(L, 2, 1);
 
@@ -503,7 +504,7 @@ static int luv_zmq_ctx_free(lua_State* L) {
 }
 
 luaL_Reg luv_zmq_funcs[] = {
-  {"create",    luv_new_zmq},
+  {"create",    luv_zmq_new},
   {NULL,        NULL}
 };
 

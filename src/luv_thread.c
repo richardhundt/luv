@@ -1,4 +1,6 @@
-#include "luv.h"
+#include "luv_common.h"
+#include "luv_state.h"
+#include "luv_thread.h"
 
 void luvL_thread_ready(luv_thread_t* self) {
   if (!(self->flags & LUV_FREADY)) {
@@ -221,7 +223,7 @@ static void _thread_enter(void* arg) {
   self->flags |= LUV_FDEAD;
 }
 
-luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
+luv_thread_t* luvL_thread_new(luv_state_t* outer, int narg) {
   lua_State* L = outer->L;
   int base;
 
@@ -268,7 +270,7 @@ luv_thread_t* luvL_thread_create(luv_state_t* outer, int narg) {
 }
 
 /* Lua API */
-static int luv_new_thread(lua_State* L) {
+static int luv_thread_new(lua_State* L) {
   luv_state_t* outer = luvL_state_self(L);
   int narg = lua_gettop(L);
   luvL_thread_create(outer, narg);
@@ -305,7 +307,7 @@ static int luv_thread_tostring(lua_State* L) {
 }
 
 luaL_Reg luv_thread_funcs[] = {
-  {"spawn",     luv_new_thread},
+  {"spawn",     luv_thread_new},
   {NULL,        NULL}
 };
 
