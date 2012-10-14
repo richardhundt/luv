@@ -1,6 +1,3 @@
-#include "zmq.h"
-#include "zmq_utils.h"
-
 #include "luv.h"
 
 int luvL_zmq_socket_readable(void* socket) {
