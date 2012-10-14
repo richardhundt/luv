@@ -10,7 +10,7 @@ LUADIR = /usr/local/include/luajit-2.0
 
 COPT = -O2 -fPIC
 
-CWARNS = -Wall
+CWARNS = -Wall -Werror
 
 CFLAGS += $(CWARNS) $(COPT) -I$(LUADIR) -I./uv/include
 ifdef USE_ZMQ
@@ -52,6 +52,7 @@ SRCS := luv.c \
 	luv_net.c \
 	luv_process.c
 ifdef USE_ZMQ
+CFLAGS += -DUSE_ZMQ
 SRCS += luv_zmq.c
 endif
 OBJS := $(patsubst %.c,%.o,$(SRCS))
