@@ -21,8 +21,10 @@ extern "C" {
 #include "uv/include/uv.h"
 #include "ngx-queue.h"
 
+#ifdef USE_ZMQ
 #include "zmq/include/zmq.h"
 #include "zmq/include/zmq_utils.h"
+#endif
 
 #undef LUV_DEBUG
 

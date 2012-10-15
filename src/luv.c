@@ -230,6 +230,7 @@ luaL_Reg luv_funcs[] = {
   {NULL,            NULL}
 };
 
+#ifdef USE_ZMQ
 static const luv_const_reg_t luv_zmq_consts[] = {
   /* ctx options */
   {"IO_THREADS",        ZMQ_IO_THREADS},
@@ -293,6 +294,7 @@ static const luv_const_reg_t luv_zmq_consts[] = {
   {"QUEUE",             ZMQ_QUEUE},
   {NULL,                0}
 };
+#endif
 
 #ifdef __cplusplus
 extern "C" {
