@@ -14,8 +14,8 @@ set(USE_STRICT ON)
 option(USE_ZMQ "Include zmq" ${USE_ZMQ})
 option(USE_HTTP "Include http" ${USE_HTTP})
 option(USE_STRICT "Treat warning as errors" ${USE_STRICT})
-# TODO: include config.h into luv.h
-configure_file(cmake/config.h.in config.h)
+## TODO: include config.h into luv.h
+#configure_file(cmake/config.h.in config.h)
 
 # setup compiler flags
 add_definitions(-fPIC)
@@ -66,7 +66,4 @@ target_link_libraries(luv ${LIBS})
 set_target_properties(luv PROPERTIES PREFIX "")
 
 # install
-execute_process(COMMAND "${LUA_EXECUTABLE}" -e
-  "for k in package.cpath:gmatch(';(.-);') do io.stdout:write((k:gsub(''..package.config:sub(1,1)..'%?.so', ''))) ; break end"
-  OUTPUT_VARIABLE INSTALL_CMOD)
 install(TARGETS luv LIBRARY DESTINATION "${INSTALL_CMOD}")
