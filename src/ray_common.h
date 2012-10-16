@@ -13,6 +13,14 @@
 #include "uv/include/uv.h"
 #include "ngx-queue.h"
 
+#ifdef WIN32
+# define UNUSED /* empty */
+# define INLINE __inline
+#else
+# define UNUSED __attribute__((unused))
+# define INLINE inline
+#endif
+
 #define RAY_DEBUG
 
 #ifdef RAY_DEBUG
@@ -79,6 +87,7 @@ typedef union ray_req_u {
 #define RAY_ZMQ_CTX_T     "ray.zmq.Context"
 #define RAY_ZMQ_SOCKET_T  "ray.zmq.Socket"
 
+
 #define container_of(ptr, type, member) \
   ((type*) ((char*)(ptr) - offsetof(type, member)))
 
@@ -90,9 +99,12 @@ typedef union ray_req_u {
 
 /* lifted from luasys */
 #define ray_boxinteger(L,n) \
-    (*(lua_Integer*) (lua_newuserdata(L, sizeof(lua_Integer))) = (lua_Integer) (n))
+    (*(lua_Integer*) (lua_newuserdata(L, sizeof(lua_Integer))) = (lua_Integer)(n))
 #define ray_unboxinteger(L,i) \
     (*(lua_Integer*) (lua_touserdata(L, i)))
+
+#define ray_absindex(L, i) \
+  ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
 
 #endif /* _RAY_COMMON_H_ */

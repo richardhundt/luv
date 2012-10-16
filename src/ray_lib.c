@@ -68,6 +68,7 @@ int rayL_module(lua_State* L, const char* name, luaL_Reg* funcs) {
 }
 
 int rayL_class(lua_State* L, const char* name, luaL_Reg* meths) {
+  TRACE("new class: %s, meths: %p\n", name, meths);
   luaL_newmetatable(L, name);
   lua_pushvalue(L, -1);
   lua_setfield(L, -2, "__index");
@@ -107,11 +108,13 @@ void* rayL_checkudata(lua_State* L, int idx, const char* name) {
 LUALIB_API int rayL_core_init(lua_State *L) {
   lua_settop(L, 0);
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);
+  /*
   if (lua_isnil(L, -1)) {
     lua_pop(L, 1);
     luaopen_ray(L);
     lua_getfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);
   }
+  */
   return 1;
 }
 

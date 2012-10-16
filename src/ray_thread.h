@@ -3,19 +3,15 @@
 
 #include "ray_state.h"
 
-ray_thread_t* rayL_thread_new(ray_state_t* outer, int narg);
+ray_state_t* rayL_thread_new(lua_State* L);
 
-int  rayL_thread_loop   (ray_thread_t* thread);
-int  rayL_thread_once   (ray_thread_t* thread);
-void rayL_thread_ready  (ray_thread_t* thread);
-int  rayL_thread_yield  (ray_thread_t* thread, int narg);
-int  rayL_thread_suspend(ray_thread_t* thread);
-int  rayL_thread_resume (ray_thread_t* thread, int narg);
-void rayL_thread_enqueue(ray_thread_t* thread, ray_fiber_t* fiber);
+void rayL_thread_init(lua_State* L, int narg);
 
-void rayL_thread_init(lua_State* L);
-
-ray_thread_t* rayL_thread_self(lua_State* L);
+/*
+int rayM_thread_send    (ray_state_t* self, ray_state_t* that, int narg);
+int rayM_thread_recv    (ray_state_t* self);
+*/
+int rayM_thread_close   (ray_state_t* self);
 
 LUALIB_API int luaopen_ray_thread(lua_State* L);
 

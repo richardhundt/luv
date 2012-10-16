@@ -1,45 +1,81 @@
-#include "ray.h"
+#include "ray_lib.h"
+#include "ray_state.h"
+#include "ray_actor.h"
 
-ray_actor_t* rayL_actor_new(ray_state_t* state, char* addr) {
-  ray_actor_t* self = lua_newuserdata(state->L, sizeof(ray_actor_t));
-  luaL_getmetatable(state->L, RAY_ACTOR_T);
-  lua_setmetatable(state->L, -2);
+ray_actor_t* rayL_actor_new(lua_State* L, const char* meta) {
+  ray_actor_t* self = (ray_actor_t*)lua_newuserdata(L, sizeof(ray_actor_t));
+  memset(self, 0, sizeof(ray_actor_t));
 
-  self->mbox = zmq_socket(state->ctx, ZMQ_REP);
-  zmq_bind(self->mailbox, addr);
-  zmq_connect(state->monitor, addr);
+  self->L = lua_newthread(L);
+  lua_pushvalue(L, -2);
+  lua_xmove(L, self->L, 1);
+  lua_replace(self->L, lua_upvalueindex(1));
+
+  if (meta) {
+    luaL_getmetatable(L, meta);
+    lua_setmetatable(L, -2);
+  }
+
+  ngx_queue_init(&self->rouse);
+  ngx_queue_init(&self->queue);
+
   return self;
 }
 
-int rayL_codec_decode(ray_state_t* state, char* data, size_t len) {
-  lua_settop(state->L, 0);
-  lua_pushlstring(state->L, data, len);
-  return 0;
+uv_loop_t* rayL_event_loop(lua_State* L) {
+  lua_getfield(L, LUA_REGISTRYINDEX, "ray:event:loop");
+  uv_loop_t* loop = (uv_loop_t*)lua_touserdata(L, -1);
+  lua_pop(L, 1);
+  return loop;
 }
 
-int rayL_actor_send(ray_actor_t* self, char* data) {
-
+ray_actor_t* rayL_actor_self(lua_State* L) {
+  return (ray_actor_t*)lua_touserdata(L, 1);
 }
 
-int rayL_actor_recv(ray_actor_t* self) {
-  zmq_msg_t msg;
-  zmq_msg_init(&msg);
-  int rv = zmq_msg_recv(&msg, self->mailbox, ZMQ_DONTWAIT);
-  if (rv >= 0) {
-    void* data = zmq_msg_data(&msg);
-    size_t len = zmq_msg_size(&msg);
-    rayL_codec_decode(self->state, data, len);
+int rayL_actor_xcopy(ray_actor_t* a, ray_actor_t* b) {
+  int i, narg;
+  narg = lua_gettop(a->L);
+  lua_checkstack(a->L, 1);
+  lua_checkstack(b->L, narg);
+  for (i = 1; i <= narg; i++) {
+    lua_pushvalue(a->L, i);
+    lua_xmove(a->L, b->L, 1);
   }
-  else {
-    int e = zmq_errno();
-    if (e == EAGAIN || e == EWOULDBLOCK) {
-      rayL_state_wait(rayL_state_self(self->state), &self->rouse);
-    }
-  }
-  zmq_msg_close(&msg);
-  return rv;
+  return narg;
+}
+
+void rayL_actor_ready(ray_actor_t* self) {
+  self->ready(self);
+}
+
+int rayL_actor_yield(ray_actor_t* self) {
+  return self->yield(self);
+}
+
+int rayL_actor_suspend(ray_actor_t* self) {
+  return self->suspend(self);
+}
+
+int rayL_actor_resume(ray_actor_t* self) {
+  return self->resume(self);
 }
 
 int rayL_actor_close(ray_actor_t* self) {
-  return zmq_close(self->mailbox);
+  return self->close(self);
 }
+
+int rayL_actor_send(ray_actor_t* self, ray_actor_t* recv, int narg) {
+  //return self->send(self, recv, narg);
+  rayL_actor_xcopy(self->L, recv->L, narg);
+  rayL_actor_ready(recv);
+}
+
+int rayL_actor_recv(ray_actor_t* self) {
+  int narg = lua_gettop(self->L);
+  if (!narg) {
+    return rayL_actor_suspend(self);
+  }
+  return narg;
+}
+

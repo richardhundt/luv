@@ -26,6 +26,8 @@ void rayL_list_delete(ray_list_t* self);
 /* frees all members in the list, then frees self */
 void rayL_list_free(ray_list_t* self);
 
+#define rayL_list_init(I) ngx_queue_init(&(I)->list)
+
 #define rayL_list_head(I) \
   ngx_queue_data(ngx_queue_head(&(I)->list), ray_list_t, list)
 
