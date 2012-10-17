@@ -25,7 +25,7 @@ int rayM_fiber_await(ray_state_t* self, ray_state_t* that) {
   ngx_queue_insert_tail(&that->queue, &self->cond);
   if (rayS_is_active(self)) {
     self->flags &= ~RAY_ACTIVE;
-    TRACE("calling lua_yield");
+    TRACE("calling lua_yield\n");
     return lua_yield(self->L, lua_gettop(self->L));
   }
   else {
@@ -35,12 +35,20 @@ int rayM_fiber_await(ray_state_t* self, ray_state_t* that) {
 }
 
 int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
-  TRACE("rouse %p from %p\n", self, from);
+  ray_state_t* boss = rayS_get_main(self->L);
+  TRACE("rouse %p from %p, boss: %p\n", self, from, boss);
+
   int rc, narg;
   if (rayS_is_closed(self)) {
     TRACE("[%p]fiber is closed\n", self);
     luaL_error(self->L, "cannot resume a closed fiber");
   }
+
+  if (from != boss) {
+    ngx_queue_insert_tail(&boss->queue, &self->cond);
+    return 0;
+  }
+
   narg = lua_gettop(self->L);
 
   if (!rayS_is_start(self)) {
@@ -67,7 +75,7 @@ int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
       break;
     case 0: {
       TRACE("normal exit, wake joiners\n");
-      /* normal exit, wake up joiners */
+      /* normal exit, wake up joiners and pass our stack */
       rayS_notify(self, lua_gettop(self->L));
       rayS_close(self);
       break;
@@ -87,7 +95,6 @@ int rayM_fiber_close(ray_state_t* self) {
   lua_pushthread(self->L);
   lua_pushnil(self->L);
   lua_settable(self->L, LUA_REGISTRYINDEX);
-
   self->flags |= RAY_CLOSED;
   return 1;
 }

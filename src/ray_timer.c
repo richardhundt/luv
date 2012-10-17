@@ -3,24 +3,6 @@
 #include "ray_state.h"
 #include "ray_timer.h"
 
-/*
-static void _sleep_cb(uv_timer_t* handle, int status) {
-  ray_state_t* self = container_of(handle, ray_state_t, h);
-  rayS_rouse((ray_state_t*)handle->data, self);
-  free(handle);
-}
-
-static int ray_timer_sleep(lua_State* L) {
-  lua_Number timeout = luaL_checknumber(L, 1);
-  ray_state_t* state = rayS_get_self(L);
-  uv_timer_t*  timer = (uv_timer_t*)malloc(sizeof(uv_timer_t));
-  timer->data = state;
-  uv_timer_init(rayS_get_loop(L), timer);
-  uv_timer_start(timer, _sleep_cb, (long)(timeout * 1000), 0L);
-  return rayS_await(state, self);
-}
-*/
-
 int rayM_timer_await (ray_state_t* self, ray_state_t* that);
 int rayM_timer_rouse (ray_state_t* self, ray_state_t* from);
 int rayM_timer_close (ray_state_t* self);
@@ -30,6 +12,26 @@ static const ray_vtable_t ray_timer_v = {
   rouse : rayM_timer_rouse,
   close : rayM_state_close
 };
+
+static void _sleep_cb(uv_timer_t* handle, int status) {
+  ray_state_t* self = container_of(handle, ray_state_t, h);
+  lua_pushboolean(self->L, 1);
+  rayS_notify(self, 1);
+  rayS_close(self);
+}
+
+static int ray_timer_sleep(lua_State* L) {
+  lua_Number timeout = luaL_checknumber(L, 1);
+  ray_state_t* curr = rayS_get_self(L);
+  ray_state_t* self = rayS_new(L, RAY_TIMER_T, &ray_timer_v);
+  self->L   = lua_newthread(L);
+  self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+  lua_xmove(L, self->L, 1); /* keep self in our stack to avoid GC */
+  uv_timer_init(rayS_get_loop(L), &self->h.timer);
+  uv_timer_start(&self->h.timer, _sleep_cb, (long)(timeout * 1000), 0L);
+  return rayS_await(curr, self);
+}
+
 static void _timer_cb(uv_timer_t* h, int status) {
   ray_state_t* self = container_of(h, ray_state_t, h);
   lua_settop(self->L, 0);
@@ -38,11 +40,12 @@ static void _timer_cb(uv_timer_t* h, int status) {
 }
 int rayM_timer_await(ray_state_t* self, ray_state_t* that) {
   ngx_queue_insert_tail(&that->queue, &self->cond);
+  uv_timer_stop(&self->h.timer);
   return rayS_rouse(that, self);
 }
 int rayM_timer_rouse(ray_state_t* self, ray_state_t* from) {
-  int64_t timeout = luaL_optlong(self->L, 1, 0L);
-  int64_t repeat  = luaL_optlong(self->L, 2, 0L);
+  int64_t timeout = (int64_t)rayL_hash_get(self->u.hash, "timeout");
+  int64_t repeat  = (int64_t)rayL_hash_get(self->u.hash, "repeat");
   uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
   return 0;
 }
@@ -52,6 +55,7 @@ static int ray_timer_new(lua_State* L) {
   ray_state_t* self = rayS_new(L, RAY_TIMER_T, &ray_timer_v);
   self->L   = lua_newthread(L);
   self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+  self->u.hash = rayL_hash_new(4);
   uv_timer_init(rayS_get_loop(L), &self->h.timer);
   return 1;
 }
@@ -60,8 +64,8 @@ static int ray_timer_start(lua_State* L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   int64_t timeout = luaL_optlong(L, 2, 0L);
   int64_t repeat  = luaL_optlong(L, 3, 0L);
-  lua_pushinteger(self->L, timeout);
-  lua_pushinteger(self->L, repeat);
+  rayL_hash_set(self->u.hash, "timeout", (void*)timeout);
+  rayL_hash_set(self->u.hash, "repeat",  (void*)repeat);
   uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
   return 1;
 }
@@ -88,6 +92,7 @@ static int ray_timer_wait(lua_State *L) {
 static int ray_timer_free(lua_State *L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   rayS_close(self);
+  rayL_hash_free(self->u.hash);
   return 1;
 }
 static int ray_timer_tostring(lua_State *L) {
@@ -98,7 +103,7 @@ static int ray_timer_tostring(lua_State *L) {
 
 static luaL_Reg ray_timer_funcs[] = {
   {"create",    ray_timer_new},
-/*  {"sleep",     ray_timer_sleep}, */
+  {"sleep",     ray_timer_sleep},
   {NULL,        NULL}
 };
 

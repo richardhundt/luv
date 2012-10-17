@@ -179,8 +179,10 @@ int rayS_notify(ray_state_t* self, int narg) {
   int count = 0;
   ngx_queue_t* q;
   ray_state_t* s;
-  ngx_queue_foreach(q, &self->queue) {
+  while (!ngx_queue_empty(&self->queue)) {
+    q = ngx_queue_head(&self->queue);
     s = ngx_queue_data(q, ray_state_t, cond);
+    ngx_queue_remove(q);
     rayS_xcopy(self, s, narg);
     rayS_rouse(s, self);
     count++;
@@ -192,8 +194,8 @@ int rayS_notify(ray_state_t* self, int narg) {
 int rayM_state_close(ray_state_t* self) {
   if (!rayS_is_closed(self)) {
     self->flags |= RAY_CLOSED;
-
     /* unanchor from registry */
+    if (self->L) lua_settop(self->L, 0);
     if (self->ref != LUA_NOREF) {
       luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
       self->ref = LUA_NOREF;
