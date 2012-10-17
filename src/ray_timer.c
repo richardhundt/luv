@@ -92,7 +92,7 @@ static int ray_timer_wait(lua_State *L) {
 static int ray_timer_free(lua_State *L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   rayS_close(self);
-  rayL_hash_free(self->u.hash);
+  if (self->u.hash) rayL_hash_free(self->u.hash);
   return 1;
 }
 static int ray_timer_tostring(lua_State *L) {
