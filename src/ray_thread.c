@@ -1,23 +1,14 @@
 #include "ray_lib.h"
+#include "ray_hash.h"
 #include "ray_codec.h"
 #include "ray_state.h"
 #include "ray_thread.h"
 
 static const ray_vtable_t ray_thread_v = {
-  suspend : rayM_main_suspend,
-  resume  : rayM_main_resume,
-  enqueue : rayM_main_enqueue,
-  ready   : rayM_main_ready,
-/*  send    : rayM_thread_send, */
-/*  recv    : rayM_thread_recv, */
-  close   : rayM_thread_close
+  await : rayM_main_await,
+  rouse : rayM_main_rouse,
+  close : rayM_thread_close
 };
-
-static void _async_cb(uv_async_t* handle, int status) {
-  TRACE("interrupt loop\n");
-  (void)handle;
-  (void)status;
-}
 
 static void _thread_enter(void* arg) {
   ray_state_t* self = (ray_state_t*)arg;
@@ -39,7 +30,6 @@ static void _thread_enter(void* arg) {
   if (rv) { /* error */
     lua_pushboolean(self->L, 0);
     lua_insert(self->L, 1);
-    rayS_ready(self);
     luaL_error(self->L, lua_tostring(self->L, -1));
   }
   else {
@@ -50,36 +40,21 @@ static void _thread_enter(void* arg) {
   self->flags |= RAY_CLOSED;
 }
 
-void* rayL_alloc_fn(void *ud, void *ptr, size_t osize, size_t nsize) {
-  (void)ud;  (void)osize;  /* not used */
-  if (nsize == 0) {
-    free(ptr);
-    return NULL;
-  }
-  else {
-    return realloc(ptr, nsize);
-  }
-}
-
 ray_state_t* rayL_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
 
   ray_state_t* self = lua_newuserdata(L, sizeof(ray_state_t));
   lua_State*   L1   = luaL_newstate();
-  uv_loop_t*   loop = rayS_get_loop(L1);
 
   memset(self, 0, sizeof(ray_state_t));
 
   self->v = ray_thread_v;
   self->L = L1;
-  self->flags = RAY_READY;
+  self->u.hash = rayL_hash_new(4);
 
-  uv_async_init(loop, &self->h.async, _async_cb);
-  uv_unref(&self->h.handle);
-
-  ngx_queue_init(&self->rouse);
   ngx_queue_init(&self->queue);
+  ngx_queue_init(&self->cond);
 
   luaL_getmetatable(L, RAY_THREAD_T);
   lua_setmetatable(L, -2);
@@ -104,7 +79,7 @@ ray_state_t* rayL_thread_new(lua_State* L) {
 
   uv_thread_t tid;
   uv_thread_create(&tid, _thread_enter, self);
-  self->u.data = (void*)tid;
+  rayL_hash_set(self->u.hash, "tid", (void*)tid);
 
   /* inserted udata below function, so now just udata on top */
   lua_settop(L, 1);
@@ -122,29 +97,9 @@ int rayM_thread_close(ray_state_t* self) {
 
     lua_pushnil(self->L);
     lua_setfield(self->L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
+    rayL_hash_free(self->u.hash);
   }
   return 1;
-}
-
-int rayM_thread_join(ray_state_t* self, ray_state_t* from) {
-  rayS_ready(self);
-  rayS_suspend(from);
-  uv_thread_t tid = (uv_thread_t)self->u.data;
-  uv_thread_join(&tid);
-
-  lua_settop(from->L, 0);
-
-  size_t len;
-  int nret = lua_gettop(self->L);
-
-  rayL_codec_encode(self->L, nret);
-  const char* data = lua_tolstring(self->L, -1, &len);
-  lua_pushlstring(from->L, data, len);
-  rayL_codec_decode(from->L);
-
-  rayM_thread_close(self);
-
-  return nret;
 }
 
 /* Lua API */
@@ -158,10 +113,9 @@ static int ray_thread_join(lua_State* L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   ray_state_t* from = rayS_get_self(L);
 
-  rayS_ready(self);
-  rayS_suspend(from);
+  rayS_await(from, self);
 
-  uv_thread_t tid = (uv_thread_t)self->u.data;
+  uv_thread_t tid = (uv_thread_t)rayL_hash_get(self->u.hash, "tid");
   uv_thread_join(&tid);
 
   lua_settop(from->L, 0);
@@ -182,7 +136,7 @@ static int ray_thread_join(lua_State* L) {
 static int ray_thread_free(lua_State* L) {
   ray_state_t* self = lua_touserdata(L, 1);
   TRACE("FREE: %p\n", self);
-  //rayM_thread_close(self);
+  rayM_thread_close(self);
   return 1;
 }
 static int ray_thread_tostring(lua_State* L) {

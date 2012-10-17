@@ -5,13 +5,9 @@
 #include "ray_fiber.h"
 
 static const ray_vtable_t ray_fiber_v = {
-  suspend : rayM_fiber_suspend,
-  resume  : rayM_fiber_resume,
-  enqueue : rayM_state_enqueue,
-  ready   : rayM_fiber_ready,
-  send    : rayM_state_send,
-  recv    : rayM_state_recv,
-  close   : rayM_fiber_close
+  await : rayM_fiber_await,
+  rouse : rayM_fiber_rouse,
+  close : rayM_fiber_close
 };
 
 ray_state_t* rayM_fiber_new(lua_State* L) {
@@ -24,27 +20,22 @@ ray_state_t* rayM_fiber_new(lua_State* L) {
   return self;
 }
 
-int rayM_fiber_suspend(ray_state_t* self) {
-  if (rayS_is_ready(self)) {
-    self->flags &= ~RAY_READY;
-    rayS_dequeue(self);
-    return 0;
-  }
-  else {
+int rayM_fiber_await(ray_state_t* self, ray_state_t* that) {
+  TRACE("await %p that %p\n", self, that);
+  ngx_queue_insert_tail(&that->queue, &self->cond);
+  if (rayS_is_active(self)) {
+    self->flags &= ~RAY_ACTIVE;
+    TRACE("calling lua_yield");
     return lua_yield(self->L, lua_gettop(self->L));
   }
-}
-
-int rayM_fiber_ready(ray_state_t* self) {
-  if (!rayS_is_ready(self)) {
-    self->flags |= RAY_READY;
-    rayS_enqueue(rayS_get_main(self->L), self);
-    return 1;
+  else {
+    TRACE("rousing...\n");
+    return rayS_rouse(that, self);
   }
-  return 0;
 }
 
-int rayM_fiber_resume(ray_state_t* self) {
+int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
+  TRACE("rouse %p from %p\n", self, from);
   int rc, narg;
   if (rayS_is_closed(self)) {
     TRACE("[%p]fiber is closed\n", self);
@@ -52,11 +43,12 @@ int rayM_fiber_resume(ray_state_t* self) {
   }
   narg = lua_gettop(self->L);
 
-  if (!(self->flags & RAY_START)) {
+  if (!rayS_is_start(self)) {
     /* first entry, ignore function arg */
     self->flags |= RAY_START;
     --narg;
   }
+  self->flags |= RAY_ACTIVE;
 
   TRACE("calling lua_resume on: %p\n", self);
   rc = lua_resume(self->L, narg);
@@ -66,15 +58,17 @@ int rayM_fiber_resume(ray_state_t* self) {
     case LUA_YIELD:
       narg = lua_gettop(self->L);
       TRACE("[%p] seen LUA_YIELD, narg: %i\n", self, narg);
-      if (rayS_is_ready(self)) {
-        ray_state_t* root = rayS_get_main(self->L);
-        ngx_queue_insert_tail(&root->rouse, &self->queue);
+      if (rayS_is_active(self)) {
+        ray_state_t* boss = rayS_get_main(self->L);
+        self->flags &= ~RAY_ACTIVE;
+        TRACE("still active...\n");
+        ngx_queue_insert_tail(&boss->queue, &self->cond);
       }
       break;
     case 0: {
+      TRACE("normal exit, wake joiners\n");
       /* normal exit, wake up joiners */
-      TRACE("normal exit, broadcasting...\n");
-      rayS_notify(self, LUA_MULTRET);
+      rayS_notify(self, lua_gettop(self->L));
       rayS_close(self);
       break;
     }
@@ -89,7 +83,7 @@ int rayM_fiber_resume(ray_state_t* self) {
 
 int rayM_fiber_close(ray_state_t* self) {
   if (self->flags & RAY_CLOSED) return 0;
-
+  TRACE("closing %p\n", self);
   lua_pushthread(self->L);
   lua_pushnil(self->L);
   lua_settable(self->L, LUA_REGISTRYINDEX);
@@ -111,19 +105,17 @@ static int ray_fiber_new(lua_State* L) {
   lua_checkstack(self->L, narg);
   lua_xmove(L, self->L, narg);
 
+  ray_state_t* curr = rayS_get_main(L);
+  ngx_queue_insert_tail(&curr->queue, &self->cond);
+
   return 1;
 }
 
 static int ray_fiber_spawn(lua_State* L) {
   ray_fiber_new(L);
   ray_state_t* self = (ray_state_t*)lua_touserdata(L, 1);
-  rayM_fiber_ready(self);
-  return 1;
-}
-
-static int ray_fiber_ready(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)lua_touserdata(L, 1);
-  return rayM_fiber_ready(self);
+  ngx_queue_remove(&self->cond);
+  return rayS_rouse(self, rayS_get_main(L));
 }
 
 static int ray_fiber_join(lua_State* L) {
@@ -133,19 +125,12 @@ static int ray_fiber_join(lua_State* L) {
   if (rayS_is_closed(self)) {
     return rayS_xcopy(self, from, lua_gettop(self->L));
   }
-  TRACE("here 1\n");
-  rayS_enqueue(self, from);
-  TRACE("here 2\n");
-  rayS_ready(self);
-  TRACE("here 3\n");
-  return rayS_suspend(from);
+  return rayS_await(from, self);
 }
 
 static int ray_fiber_free(lua_State* L) {
   ray_state_t* self = (ray_state_t*)lua_touserdata(L, 1);
-  TRACE("free\n");
-  /* FIXME: this needs to know what type of stash we're using */
-  if (self->u.data) free(self->u.data);
+  (void)self;
   return 1;
 }
 static int ray_fiber_tostring(lua_State* L) {
@@ -162,7 +147,6 @@ static luaL_Reg ray_fiber_funcs[] = {
 
 static luaL_Reg ray_fiber_meths[] = {
   {"join",      ray_fiber_join},
-  {"ready",     ray_fiber_ready},
   {"__gc",      ray_fiber_free},
   {"__tostring",ray_fiber_tostring},
   {NULL,        NULL}

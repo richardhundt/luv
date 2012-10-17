@@ -1,5 +1,6 @@
 #include "ray_common.h"
 #include "ray_state.h"
+#include "ray_hash.h"
 
 uv_loop_t* rayS_get_loop(lua_State* L) {
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_EVENT_LOOP);
@@ -22,7 +23,6 @@ ray_state_t* rayS_get_self(lua_State* L) {
   return self;
 }
 
-
 ray_state_t* rayS_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   ray_state_t* self = (ray_state_t*)lua_newuserdata(L, sizeof(ray_state_t));
   memset(self, 0, sizeof(ray_state_t));
@@ -31,66 +31,96 @@ ray_state_t* rayS_new(lua_State* L, const char* m, const ray_vtable_t* v) {
     luaL_getmetatable(L, m);
     lua_setmetatable(L, -2);
   }
-  if (v) self->v = *v;
+  if (v) {
+    self->v = *v;
+  }
 
-  ngx_queue_init(&self->rouse);
   ngx_queue_init(&self->queue);
+  ngx_queue_init(&self->cond);
 
   self->ref = LUA_NOREF;
 
   return self;
 }
 
-static const ray_vtable_t ray_main_v = {
-  suspend : rayM_main_suspend,
-  resume  : rayM_main_resume,
-  enqueue : rayM_main_enqueue,
-  ready   : rayM_main_ready
+static const ray_vtable_t ray_idle_v = {
+  await : rayM_idle_await,
+  rouse : rayM_idle_rouse,
+  close : rayM_idle_close
 };
 
-int rayM_main_suspend(ray_state_t* self) {
-  if (rayS_is_ready(self)) {
-    self->flags &= ~RAY_READY;
-    uv_loop_t* loop = rayS_get_loop(self->L);
-    int active = 0;
-    do {
-      rayS_schedule(self);
-      active = uv_run_once(loop);
-      if (rayS_is_ready(self)) {
-        break;
-      }
-    }
-    while (active);
-    /* nothing left to do, back in main */
-    self->flags |= RAY_READY;
+static const ray_vtable_t ray_main_v = {
+  await : rayM_main_await,
+  rouse : rayM_main_rouse
+};
+
+int rayM_idle_await(ray_state_t* self, ray_state_t* that) {
+  TRACE("idle await\n");
+  ngx_queue_insert_tail(&that->queue, &self->cond);
+  return rayS_rouse(that, self);
+}
+int rayM_idle_rouse(ray_state_t* self, ray_state_t* from) {
+  if (rayS_is_active(self)) return 0;
+  self->flags |= RAY_ACTIVE;
+  TRACE("rousing idle\n");
+  uv_loop_t* loop = (uv_loop_t*)self->u.data;
+  if (uv_run_once(loop)) {
+    ngx_queue_insert_tail(&from->queue, &self->cond);
   }
-  return lua_gettop(self->L);
+
+  self->flags &= ~RAY_ACTIVE;
+  return 1;
 }
-int rayM_main_resume(ray_state_t* self) {
-  rayS_ready(self);
-  return lua_gettop(self->L);
-}
-int rayM_main_enqueue(ray_state_t* self, ray_state_t* that) {
-  TRACE("here\n");
-  int interrupt = ngx_queue_empty(&self->rouse);
-  ngx_queue_insert_tail(&self->rouse, &that->queue);
-  if (interrupt) {
-    uv_async_send(&self->h.async);
-    uv_ref(&self->h.handle);
-  }
-  return interrupt;
-}
-int rayM_main_ready(ray_state_t* self) {
-  if (!rayS_is_ready(self)) {
-    self->flags |= RAY_READY;
-    return uv_async_send(&self->h.async);
+int rayM_idle_close(ray_state_t* self) {
+  if (!rayS_is_closed(self)) {
+    self->flags |= RAY_CLOSED;
+    uv_loop_t* loop = (uv_loop_t*)self->u.data;
+    uv_loop_delete(loop);
+    return 1;
   }
   return 0;
 }
 
+int rayM_main_rouse(ray_state_t* self, ray_state_t* from) {
+  TRACE("main rouse %p from %p\n", self, from);
+  if (rayS_is_active(self)) {
+    self->flags &= ~RAY_ACTIVE;
+    uv_async_send(&self->h.async);
+  }
+  return 1;
+}
+int rayM_main_await(ray_state_t* self, ray_state_t* that) {
+  TRACE("main await\n");
+  if (rayS_is_active(self)) return 0;
+  TRACE("main is active...\n");
+  self->flags |= RAY_ACTIVE;
+
+  ngx_queue_insert_tail(&that->queue, &self->cond);
+
+  ray_state_t* idle = (ray_state_t*)rayL_hash_get(self->u.hash, "idle");
+  ngx_queue_t* q;
+  ray_state_t* s;
+  if (ngx_queue_empty(&self->queue) && idle) {
+    rayS_rouse(idle, self);
+  }
+  while(!ngx_queue_empty(&self->queue)) {
+    TRACE("loop top\n");
+    q = ngx_queue_head(&self->queue);
+    s = ngx_queue_data(q, ray_state_t, cond);
+    ngx_queue_remove(q);
+    rayS_rouse(s, self);
+    if (!rayS_is_active(self)) break;
+    if (ngx_queue_empty(&self->queue) && idle) {
+      rayS_rouse(idle, self);
+    }
+  }
+
+  self->flags &= ~RAY_ACTIVE;
+  TRACE("unloop\n");
+  return 1;
+}
 
 static void _async_cb(uv_async_t* handle, int status) {
-  TRACE("interrupt loop\n");
   (void)handle;
   (void)status;
 }
@@ -98,30 +128,27 @@ static void _async_cb(uv_async_t* handle, int status) {
 int rayS_init_main(lua_State* L) {
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
   if (lua_isnil(L, -1)) {
-    uv_loop_t* loop = rayS_get_loop(L);
-
-    ray_state_t* self = lua_newuserdata(L, sizeof(ray_state_t));
-    memset(self, 0, sizeof(ray_state_t));
-
+    ray_state_t* self = rayS_new(L, NULL, &ray_main_v);
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
 
-    /* TODO: make this callable from anywhere by recursing up the call stack */
-    assert(lua_pushthread(L)); /* lua_pushthread returns 1 if main thread */
-
+    assert(lua_pushthread(L));
     lua_pushvalue(L, -2);
     lua_rawset(L, LUA_REGISTRYINDEX);
 
-    self->v = ray_main_v;
+    ray_state_t* idle = rayS_new(L, NULL, &ray_idle_v);
+    idle->u.data      = rayS_get_loop(L);
+    idle->ref         = luaL_ref(L, LUA_REGISTRYINDEX);
+
     self->L = L;
+    self->u.hash = rayL_hash_new(4);
+    rayL_hash_set(self->u.hash, "idle", idle);
 
-    self->flags = RAY_READY;
-
-    uv_async_init(loop, &self->h.async, _async_cb);
-    uv_unref(&self->h.handle);
-
-    ngx_queue_init(&self->rouse);
     ngx_queue_init(&self->queue);
+    ngx_queue_init(&self->cond);
+
+    uv_async_init(rayS_get_loop(L), &self->h.async, _async_cb);
+    uv_unref(&self->h.handle);
 
     lua_pop(L, 1);
   }
@@ -148,107 +175,52 @@ int rayS_xcopy(ray_state_t* a, ray_state_t* b, int narg) {
   return narg;
 }
 
-int rayS_schedule(ray_state_t* self) {
-  int seen = 0;
-  ngx_queue_t* q;
-  ray_state_t* s;
-  while (!ngx_queue_empty(&self->rouse)) {
-    q = ngx_queue_head(&self->rouse);
-    s = ngx_queue_data(q, ray_state_t, queue);
-    ngx_queue_remove(q);
-    rayS_resume(s);
-    ++seen;
-  }
-  return seen;
-}
-
 int rayS_notify(ray_state_t* self, int narg) {
-  int seen;
-  if (narg < 0 || narg > lua_gettop(self->L)) {
-    narg = lua_gettop(self->L);
-  }
+  int count = 0;
   ngx_queue_t* q;
   ray_state_t* s;
-  seen = 0;
-  while (!ngx_queue_empty(&self->rouse)) {
-    q = ngx_queue_head(&self->rouse);
-    s = ngx_queue_data(q, ray_state_t, queue);
-    ngx_queue_remove(q);
-    rayS_send(self, s, narg);
-    ++seen;
+  ngx_queue_foreach(q, &self->queue) {
+    s = ngx_queue_data(q, ray_state_t, cond);
+    rayS_xcopy(self, s, narg);
+    rayS_rouse(s, self);
+    count++;
   }
-  return seen;
+  return count;
 }
 
 /* polymorphic state methods with some default implementations */
-
-static void _close_cb(uv_handle_t* handle) {
-  ray_state_t* self = container_of(handle, ray_state_t, h);
-  rayS_notify(self, 0);
-}
-
-int rayM_state_enqueue(ray_state_t* self, ray_state_t* that) {
-  ngx_queue_insert_tail(&self->rouse, &that->queue);
-  return 1;
-}
-
 int rayM_state_close(ray_state_t* self) {
-  if (!rayS_is_closed(self) && self->h.handle.type) {
+  if (!rayS_is_closed(self)) {
     self->flags |= RAY_CLOSED;
 
     /* unanchor from registry */
-    lua_pushthread(self->L);
-    lua_pushnil(self->L);
-    lua_settable(self->L, LUA_REGISTRYINDEX);
-
     if (self->ref != LUA_NOREF) {
       luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
+      self->ref = LUA_NOREF;
     }
-    uv_close(&self->h.handle, _close_cb);
+    else {
+      lua_pushthread(self->L);
+      lua_pushnil(self->L);
+      lua_settable(self->L, LUA_REGISTRYINDEX);
+    }
+
+    if (self->h.handle.type) {
+      uv_close(&self->h.handle, NULL);
+    }
+    return 1;
   }
   return 0;
 }
-int rayM_state_send(ray_state_t* self, ray_state_t* recv, int narg) {
-  rayS_xcopy(self, recv, narg);
-  rayS_ready(recv);
-  return 1;
-}
-int rayM_state_recv(ray_state_t* self) {
-  if (lua_gettop(self->L) == 0) {
-    return rayS_suspend(self);
-  }
-  else {
-    return lua_gettop(self->L);
-  }
-}
 
-
-/* suspend this state allowing others to run */
-int rayS_suspend(ray_state_t* self) {
-  return self->v.suspend(self);
-}
 /* resume this state */
-int rayS_resume(ray_state_t* self) {
-  return self->v.resume(self);
+int rayS_rouse(ray_state_t* self, ray_state_t* from) {
+  return self->v.rouse(self, from);
 }
-/* add another state to our queue */
-int rayS_enqueue(ray_state_t* self, ray_state_t* that) {
-  return self->v.enqueue(self, that);
-}
-/* signal that we're ready to be woken */
-int rayS_ready(ray_state_t* self) {
-  return self->v.ready(self);
+/* wait for signal */
+int rayS_await(ray_state_t* self, ray_state_t* that) {
+  return self->v.await(self, that);
 }
 /* terminate a state */
 int rayS_close(ray_state_t* self) {
   return self->v.close(self);
-}
-
-/* send narg values from current stack to another's and ready it */
-int rayS_send(ray_state_t* self, ray_state_t* that, int narg) {
-  return self->v.send(self, that, narg);
-}
-/* recv values to our stack, from another and suspend if empty */
-int rayS_recv(ray_state_t* self) {
-  return self->v.recv(self);
 }

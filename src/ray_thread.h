@@ -7,10 +7,6 @@ ray_state_t* rayL_thread_new(lua_State* L);
 
 void rayL_thread_init(lua_State* L, int narg);
 
-/*
-int rayM_thread_send    (ray_state_t* self, ray_state_t* that, int narg);
-int rayM_thread_recv    (ray_state_t* self);
-*/
 int rayM_thread_close   (ray_state_t* self);
 
 LUALIB_API int luaopen_ray_thread(lua_State* L);
