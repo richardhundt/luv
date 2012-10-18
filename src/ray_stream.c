@@ -225,7 +225,9 @@ static int ray_stream_write(lua_State* L) {
     STREAM_ERROR(L, "write: %s", rayS_get_loop(L));
     return 2;
   }
-
+  if (rayS_is_start(self)) {
+    rayL_stream_stop(self);
+  }
   return rayS_await(curr, self);
 }
 
