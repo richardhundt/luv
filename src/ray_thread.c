@@ -1,6 +1,6 @@
 #include "ray_lib.h"
 #include "ray_codec.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_thread.h"
 
 static const ray_vtable_t ray_thread_v = {
@@ -10,7 +10,7 @@ static const ray_vtable_t ray_thread_v = {
 };
 
 static void _thread_enter(void* arg) {
-  ray_state_t* self = (ray_state_t*)arg;
+  ray_actor_t* self = (ray_actor_t*)arg;
   TRACE("ENTER: %p, L: %p, top: %i\n", self, self->L, lua_gettop(self->L));
 
   rayL_codec_decode(self->L);
@@ -39,14 +39,14 @@ static void _thread_enter(void* arg) {
   self->flags |= RAY_CLOSED;
 }
 
-ray_state_t* rayL_thread_new(lua_State* L) {
+ray_actor_t* rayL_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
 
-  ray_state_t* self = lua_newuserdata(L, sizeof(ray_state_t));
+  ray_actor_t* self = lua_newuserdata(L, sizeof(ray_actor_t));
   lua_State*   L1   = luaL_newstate();
 
-  memset(self, 0, sizeof(ray_state_t));
+  memset(self, 0, sizeof(ray_actor_t));
 
   self->v = ray_thread_v;
   self->L = L1;
@@ -85,12 +85,12 @@ ray_state_t* rayL_thread_new(lua_State* L) {
   return self;
 }
 
-int rayM_thread_close(ray_state_t* self) {
-  if (!rayS_is_closed(self)) {
+int rayM_thread_close(ray_actor_t* self) {
+  if (!ray_is_closed(self)) {
     self->flags |= RAY_CLOSED;
     uv_close(&self->h.handle, NULL);
 
-    uv_loop_t* loop = rayS_get_loop(self->L);
+    uv_loop_t* loop = ray_get_loop(self->L);
     uv_loop_delete(loop);
 
     lua_pushnil(self->L);
@@ -101,16 +101,16 @@ int rayM_thread_close(ray_state_t* self) {
 
 /* Lua API */
 static int ray_thread_new(lua_State* L) {
-  ray_state_t* self = rayL_thread_new(L);
+  ray_actor_t* self = rayL_thread_new(L);
   TRACE("new thread: %p in %p", self, L);
   return 1;
 }
 
 static int ray_thread_join(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
-  ray_state_t* from = rayS_get_self(L);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
+  ray_actor_t* from = ray_get_self(L);
 
-  rayS_await(from, self);
+  ray_await(from, self);
 
   uv_thread_t tid = (uv_thread_t)self->u.data;
   uv_thread_join(&tid);
@@ -131,13 +131,13 @@ static int ray_thread_join(lua_State* L) {
 }
 
 static int ray_thread_free(lua_State* L) {
-  ray_state_t* self = lua_touserdata(L, 1);
+  ray_actor_t* self = lua_touserdata(L, 1);
   TRACE("FREE: %p\n", self);
   rayM_thread_close(self);
   return 1;
 }
 static int ray_thread_tostring(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_THREAD_T, self);
   return 1;
 }
@@ -158,7 +158,7 @@ LUALIB_API int luaopen_ray_thread(lua_State* L) {
   rayL_module(L, "ray.thread", ray_thread_funcs);
   rayL_class (L, RAY_THREAD_T, ray_thread_meths);
   lua_pop(L, 1);
-  rayS_init_main(L);
+  ray_init_main(L);
   return 1;
 }
 

@@ -22,6 +22,5 @@ typedef struct ray_const_reg_s {
   int          val;
 } ray_const_reg_t;
 
-
 #endif /* _RAY_LIB_H_ */
 

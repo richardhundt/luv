@@ -1,7 +1,7 @@
 #include "ray.h"
 
 static int ray_new_chan(lua_State* L) {
-  ray_state_t* curr = rayL_state_self(L);
+  ray_actor_t* curr = rayL_state_self(L);
   ray_chan_t*  self = lua_newuserdata(L, sizeof(ray_chan_t));
 
   luaL_getmetatable(L, RAY_CHAN_T);

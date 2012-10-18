@@ -13,7 +13,7 @@ extern "C" {
 #include "ray_common.h"
 #include "ray_cond.h"
 #include "ray_codec.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_fiber.h"
 #include "ray_thread.h"
 #include "ray_object.h"

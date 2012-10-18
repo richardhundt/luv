@@ -1,7 +1,7 @@
 #include <stdarg.h>
 
 #include "ray_lib.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_fiber.h"
 
 static const ray_vtable_t ray_fiber_v = {
@@ -10,8 +10,8 @@ static const ray_vtable_t ray_fiber_v = {
   close : rayM_fiber_close
 };
 
-ray_state_t* rayM_fiber_new(lua_State* L) {
-  ray_state_t* self = rayS_new(L, RAY_FIBER_T, &ray_fiber_v);
+ray_actor_t* rayM_fiber_new(lua_State* L) {
+  ray_actor_t* self = rayL_actor_new(L, RAY_FIBER_T, &ray_fiber_v);
 
   self->L = lua_newthread(L);
   lua_pushvalue(L, -2);
@@ -20,17 +20,17 @@ ray_state_t* rayM_fiber_new(lua_State* L) {
   return self;
 }
 
-int rayM_fiber_await(ray_state_t* self, ray_state_t* that) {
+int rayM_fiber_await(ray_actor_t* self, ray_actor_t* that) {
   TRACE("await %p that %p, calling lua_yield\n", self, that);
   return lua_yield(self->L, lua_gettop(self->L));
 }
 
-int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
-  ray_state_t* boss = rayS_get_main(self->L);
+int rayM_fiber_rouse(ray_actor_t* self, ray_actor_t* from) {
+  ray_actor_t* boss = ray_get_main(self->L);
   TRACE("rouse %p from %p, boss: %p\n", self, from, boss);
 
   int rc, narg;
-  if (rayS_is_closed(self)) {
+  if (ray_is_closed(self)) {
     TRACE("[%p]fiber is closed\n", self);
     luaL_error(self->L, "cannot resume a closed fiber");
   }
@@ -45,7 +45,7 @@ int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
 
   narg = lua_gettop(self->L);
 
-  if (!rayS_is_start(self)) {
+  if (!ray_is_start(self)) {
     /* first entry, ignore function arg */
     self->flags |= RAY_START;
     --narg;
@@ -59,7 +59,7 @@ int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
     case LUA_YIELD:
       narg = lua_gettop(self->L);
       TRACE("[%p] seen LUA_YIELD, narg: %i\n", self, narg);
-      if (rayS_is_active(self)) {
+      if (ray_is_active(self)) {
         self->flags &= ~RAY_ACTIVE;
         TRACE("still active...\n");
         ngx_queue_insert_tail(&boss->queue, &self->cond);
@@ -68,20 +68,20 @@ int rayM_fiber_rouse(ray_state_t* self, ray_state_t* from) {
     case 0: {
       TRACE("normal exit, wake joiners\n");
       /* normal exit, wake up joiners and pass our stack */
-      rayS_notify(self, lua_gettop(self->L));
-      rayS_close(self);
+      ray_notify(self, lua_gettop(self->L));
+      ray_close(self);
       break;
     }
     default:
       TRACE("ERROR: in fiber\n");
       lua_pushvalue(self->L, -1);  /* error message */
-      rayS_close(self);
+      ray_close(self);
       lua_error(self->L);
   }
   return rc;
 }
 
-int rayM_fiber_close(ray_state_t* self) {
+int rayM_fiber_close(ray_actor_t* self) {
   TRACE("closing %p\n", self);
   lua_pushthread(self->L);
   lua_pushnil(self->L);
@@ -96,13 +96,13 @@ static int ray_fiber_new(lua_State* L) {
   int narg = lua_gettop(L);
 
   luaL_checktype(L, 1, LUA_TFUNCTION);
-  ray_state_t* self = rayM_fiber_new(L);
+  ray_actor_t* self = rayM_fiber_new(L);
   lua_insert(L, 1);
 
   lua_checkstack(self->L, narg);
   lua_xmove(L, self->L, narg);
 
-  ray_state_t* boss = rayS_get_main(L);
+  ray_actor_t* boss = ray_get_main(L);
   ngx_queue_insert_tail(&boss->queue, &self->cond);
 
   return 1;
@@ -110,27 +110,27 @@ static int ray_fiber_new(lua_State* L) {
 
 static int ray_fiber_spawn(lua_State* L) {
   ray_fiber_new(L);
-  ray_state_t* self = (ray_state_t*)lua_touserdata(L, 1);
-  return rayS_rouse(self, rayS_get_main(L));
+  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
+  return ray_rouse(self, ray_get_main(L));
 }
 
 static int ray_fiber_join(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
-  ray_state_t* from = (ray_state_t*)rayS_get_self(L);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
+  ray_actor_t* from = (ray_actor_t*)ray_get_self(L);
   TRACE("join %p from %p\n", self, from);
-  if (rayS_is_closed(self)) {
-    return rayS_xcopy(self, from, lua_gettop(self->L));
+  if (ray_is_closed(self)) {
+    return ray_xcopy(self, from, lua_gettop(self->L));
   }
-  return rayS_await(from, self);
+  return ray_await(from, self);
 }
 
 static int ray_fiber_free(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)lua_touserdata(L, 1);
+  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   (void)self;
   return 1;
 }
 static int ray_fiber_tostring(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)lua_touserdata(L, 1);
+  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_FIBER_T, self);
   return 1;
 }
@@ -160,7 +160,7 @@ LUALIB_API int luaopen_ray_fiber(lua_State* L) {
   rayL_class(L, RAY_FIBER_T, ray_fiber_meths);
   lua_pop(L, 1);
 
-  rayS_init_main(L);
+  ray_init_main(L);
 
   return 1;
 }

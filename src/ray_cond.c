@@ -1,22 +1,22 @@
 #include "ray_common.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_cond.h"
 
 int rayL_cond_init(ray_cond_t* cond) {
   ngx_queue_init(cond);
   return 1;
 }
-int rayL_cond_wait(ray_cond_t* cond, ray_state_t* curr) {
+int rayL_cond_wait(ray_cond_t* cond, ray_actor_t* curr) {
   ngx_queue_insert_tail(cond, &curr->cond);
   TRACE("SUSPEND state %p\n", curr);
   return rayL_state_suspend(curr);
 }
 int rayL_cond_signal(ray_cond_t* cond) {
   ngx_queue_t* q;
-  ray_state_t* s;
+  ray_actor_t* s;
   if (!ngx_queue_empty(cond)) {
     q = ngx_queue_head(cond);
-    s = ngx_queue_data(q, ray_state_t, cond);
+    s = ngx_queue_data(q, ray_actor_t, cond);
     ngx_queue_remove(q);
     TRACE("READY state %p\n", s);
     rayL_state_ready(s);
@@ -26,11 +26,11 @@ int rayL_cond_signal(ray_cond_t* cond) {
 }
 int rayL_cond_broadcast(ray_cond_t* cond) {
   ngx_queue_t* q;
-  ray_state_t* s;
+  ray_actor_t* s;
   int roused = 0;
   while (!ngx_queue_empty(cond)) {
     q = ngx_queue_head(cond);
-    s = ngx_queue_data(q, ray_state_t, cond);
+    s = ngx_queue_data(q, ray_actor_t, cond);
     ngx_queue_remove(q);
     TRACE("READY state %p\n", s);
     rayL_state_ready(s);
@@ -52,12 +52,12 @@ static int ray_cond_new(lua_State* L) {
 
 static int ray_cond_wait(lua_State *L) {
   ray_cond_t*  cond  = (ray_cond_t*)lua_touserdata(L, 1);
-  ray_state_t* curr;
+  ray_actor_t* curr;
   if (!lua_isnoneornil(L, 2)) {
-    curr = (ray_state_t*)luaL_checkudata(L, 2, RAY_FIBER_T);
+    curr = (ray_actor_t*)luaL_checkudata(L, 2, RAY_FIBER_T);
   }
   else {
-    curr = (ray_state_t*)rayL_state_self(L);
+    curr = (ray_actor_t*)rayL_state_self(L);
   }
   rayL_cond_wait(cond, curr);
   return 1;

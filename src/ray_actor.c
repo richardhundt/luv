@@ -1,5 +1,5 @@
 #include "ray_lib.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_actor.h"
 
 ray_actor_t* rayL_actor_new(lua_State* L, const char* meta) {

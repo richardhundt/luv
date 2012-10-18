@@ -1,6 +1,6 @@
 #include "ray_lib.h"
 #include "ray_cond.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_object.h"
 
 void rayL_object_init(ray_object_t* self, uv_loop_t* loop) {

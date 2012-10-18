@@ -5,9 +5,9 @@
 static void _idle_cb(uv_idle_t* handle, int status) {
   ray_object_t* self = container_of(handle, ray_object_t, h);
   ngx_queue_t* q;
-  ray_state_t* s;
+  ray_actor_t* s;
   ngx_queue_foreach(q, &self->rouse) {
-    s = ngx_queue_data(q, ray_state_t, cond);
+    s = ngx_queue_data(q, ray_actor_t, cond);
     lua_settop(s->L, 0);
     lua_pushinteger(s->L, status);
   }
@@ -37,7 +37,7 @@ static int ray_idle_stop(lua_State* L) {
 
 static int ray_idle_wait(lua_State *L) {
   ray_object_t* self = (ray_object_t*)luaL_checkudata(L, 1, RAY_IDLE_T);
-  ray_state_t* state = rayL_state_self(L);
+  ray_actor_t* state = rayL_state_self(L);
   return rayL_cond_wait(&self->rouse, state);
 }
 

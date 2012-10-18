@@ -1,10 +1,10 @@
 #include "ray_lib.h"
-#include "ray_state.h"
+#include "ray_actor.h"
 #include "ray_timer.h"
 
-int rayM_timer_await (ray_state_t* self, ray_state_t* that);
-int rayM_timer_rouse (ray_state_t* self, ray_state_t* from);
-int rayM_timer_close (ray_state_t* self);
+int rayM_timer_await (ray_actor_t* self, ray_actor_t* that);
+int rayM_timer_rouse (ray_actor_t* self, ray_actor_t* from);
+int rayM_timer_close (ray_actor_t* self);
 
 static const ray_vtable_t ray_timer_v = {
   await : rayM_timer_await,
@@ -13,50 +13,50 @@ static const ray_vtable_t ray_timer_v = {
 };
 
 static void _sleep_cb(uv_timer_t* handle, int status) {
-  ray_state_t* self = container_of(handle, ray_state_t, h);
+  ray_actor_t* self = container_of(handle, ray_actor_t, h);
   lua_pushboolean(self->L, 1);
-  rayS_notify(self, 1);
-  rayS_close(self);
+  ray_notify(self, 1);
+  ray_close(self);
 }
 
 static int ray_timer_sleep(lua_State* L) {
   lua_Number timeout = luaL_checknumber(L, 1);
-  ray_state_t* curr = rayS_get_self(L);
-  ray_state_t* self = rayS_new(L, RAY_TIMER_T, &ray_timer_v);
+  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* self = rayL_actor_new(L, RAY_TIMER_T, &ray_timer_v);
   self->L   = lua_newthread(L);
   self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
   lua_xmove(L, self->L, 1); /* keep self in our stack to avoid GC */
-  uv_timer_init(rayS_get_loop(L), &self->h.timer);
+  uv_timer_init(ray_get_loop(L), &self->h.timer);
   uv_timer_start(&self->h.timer, _sleep_cb, (long)(timeout * 1000), 0L);
-  return rayS_await(curr, self);
+  return ray_await(curr, self);
 }
 
 static void _timer_cb(uv_timer_t* h, int status) {
-  ray_state_t* self = container_of(h, ray_state_t, h);
+  ray_actor_t* self = container_of(h, ray_actor_t, h);
   lua_settop(self->L, 0);
   lua_pushboolean(self->L, 1);
-  rayS_notify(self, 1);
+  ray_notify(self, 1);
 }
-int rayM_timer_await(ray_state_t* self, ray_state_t* that) {
+int rayM_timer_await(ray_actor_t* self, ray_actor_t* that) {
   uv_timer_stop(&self->h.timer);
-  return rayS_rouse(that, self);
+  return ray_rouse(that, self);
 }
-int rayM_timer_rouse(ray_state_t* self, ray_state_t* from) {
+int rayM_timer_rouse(ray_actor_t* self, ray_actor_t* from) {
   uv_timer_again(&self->h.timer);
   return 0;
 }
 
 /* Lua API */
 static int ray_timer_new(lua_State* L) {
-  ray_state_t* self = rayS_new(L, RAY_TIMER_T, &ray_timer_v);
+  ray_actor_t* self = rayL_actor_new(L, RAY_TIMER_T, &ray_timer_v);
   self->L   = lua_newthread(L);
   self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  uv_timer_init(rayS_get_loop(L), &self->h.timer);
+  uv_timer_init(ray_get_loop(L), &self->h.timer);
   return 1;
 }
 
 static int ray_timer_start(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   int64_t timeout = luaL_optlong(L, 2, 0L);
   int64_t repeat  = luaL_optlong(L, 3, 0L);
   uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
@@ -64,31 +64,31 @@ static int ray_timer_start(lua_State* L) {
 }
 
 static int ray_timer_again(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   lua_pushinteger(L, uv_timer_again(&self->h.timer));
   return 1;
 }
 
 static int ray_timer_stop(lua_State* L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   uv_timer_stop(&self->h.timer);
   return 1;
 }
 
 static int ray_timer_wait(lua_State *L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  ray_state_t* curr = rayS_get_self(L);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_actor_t* curr = ray_get_self(L);
   lua_settop(curr->L, 0);
-  return rayS_await(curr, self);
+  return ray_await(curr, self);
 }
 
 static int ray_timer_free(lua_State *L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  rayS_close(self);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_close(self);
   return 1;
 }
 static int ray_timer_tostring(lua_State *L) {
-  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_TIMER_T, self);
   return 1;
 }
