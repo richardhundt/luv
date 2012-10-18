@@ -3,9 +3,9 @@
 
 #include "ray_actor.h"
 
-ray_actor_t* rayL_thread_new(lua_State* L);
+ray_actor_t* ray_thread_new(lua_State* L);
 
-void rayL_thread_init(lua_State* L, int narg);
+void ray_thread_init(lua_State* L, int narg);
 
 int rayM_thread_close   (ray_actor_t* self);
 

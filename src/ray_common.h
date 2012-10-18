@@ -21,7 +21,7 @@
 # define INLINE inline
 #endif
 
-#undef RAY_DEBUG
+#define RAY_DEBUG
 
 #ifdef RAY_DEBUG
 #  define TRACE(fmt, ...) do { \

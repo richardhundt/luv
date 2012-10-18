@@ -3,16 +3,14 @@
 #include "ray_stream.h"
 #include <string.h>
 
-static ray_vtable_t ray_tcp_v = {
+static ray_vtable_t tcp_v = {
   await: rayM_stream_await,
   rouse: rayM_stream_rouse,
   close: rayM_stream_close
 };
 
-static int ray_tcp_new(lua_State* L) {
-  ray_actor_t* self = rayL_actor_new(L, RAY_TCP_T, &ray_tcp_v);
-  self->L   = lua_newthread(L);
-  self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+static int tcp_new(lua_State* L) {
+  ray_actor_t* self = ray_actor_new(L, RAY_TCP_T, &tcp_v);
   uv_tcp_init(ray_get_loop(L), &self->h.tcp);
   return 1;
 }
@@ -42,7 +40,7 @@ static void _getaddrinfo_cb(uv_getaddrinfo_t* req, int s, struct addrinfo* ai) {
   lua_settop(self->L, 0);
 }
 
-static int ray_getaddrinfo(lua_State* L) {
+static int net_getaddrinfo(lua_State* L) {
   ray_actor_t* curr = ray_get_self(L);
   uv_loop_t*   loop = ray_get_loop(L);
   uv_getaddrinfo_t* req = &curr->r.getaddrinfo;
@@ -122,7 +120,7 @@ static int ray_getaddrinfo(lua_State* L) {
   return ray_await(curr, curr);
 }
 
-static int ray_tcp_bind(lua_State* L) {
+static int tcp_bind(lua_State* L) {
   ray_actor_t *self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
 
   struct sockaddr_in addr;
@@ -139,7 +137,7 @@ static int ray_tcp_bind(lua_State* L) {
   return 1;
 }
 
-static int ray_tcp_connect(lua_State *L) {
+static int tcp_connect(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
   ray_actor_t* curr = ray_get_self(L);
 
@@ -153,9 +151,16 @@ static int ray_tcp_connect(lua_State *L) {
 
   lua_settop(L, 2);
 
-  rv = uv_tcp_connect(&curr->r.connect, &self->h.tcp, addr, rayL_connect_cb);
+  curr->r.req.data = self;
+
+  /* put a copy of self on the stack to return on success */
+  lua_settop(L, 1);
+  lua_settop(self->L, 0);
+  lua_xmove(L, self->L, 1);
+
+  rv = uv_tcp_connect(&curr->r.connect, &self->h.tcp, addr, ray_connect_cb);
   if (rv) {
-    uv_err_t err = uv_last_error(self->h.handle.loop);
+    uv_err_t err = uv_last_error(ray_get_loop(L));
     lua_settop(L, 0);
     lua_pushnil(L);
     lua_pushstring(L, uv_strerror(err));
@@ -165,7 +170,7 @@ static int ray_tcp_connect(lua_State *L) {
   return ray_await(curr, self);
 }
 
-static int ray_tcp_nodelay(lua_State* L) {
+static int tcp_nodelay(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
   luaL_checktype(L, 2, LUA_TBOOLEAN);
   int enable = lua_toboolean(L, 2);
@@ -174,7 +179,7 @@ static int ray_tcp_nodelay(lua_State* L) {
   lua_pushinteger(L, rv);
   return 1;
 }
-static int ray_tcp_keepalive(lua_State* L) {
+static int tcp_keepalive(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
   luaL_checktype(L, 2, LUA_TBOOLEAN);
   int enable = lua_toboolean(L, 2);
@@ -189,7 +194,7 @@ static int ray_tcp_keepalive(lua_State* L) {
 }
 
 /* mostly stolen from Luvit */
-static int ray_tcp_getsockname(lua_State* L) {
+static int tcp_getsockname(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
 
   int port = 0;
@@ -228,7 +233,7 @@ static int ray_tcp_getsockname(lua_State* L) {
 }
 
 /* mostly stolen from Luvit */
-static int ray_tcp_getpeername(lua_State* L) {
+static int tcp_getpeername(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
 
   int port = 0;
@@ -266,30 +271,28 @@ static int ray_tcp_getpeername(lua_State* L) {
   return 1;
 }
 
-static int ray_tcp_tostring(lua_State *L) {
+static int tcp_tostring(lua_State *L) {
   ray_actor_t *self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_TCP_T, self);
   return 1;
 }
 
-static ray_vtable_t ray_net_udp_v = {
+static ray_vtable_t udp_v = {
   await: rayM_stream_await,
   rouse: rayM_stream_rouse,
   close: rayM_stream_close
 };
 
-static int ray_udp_new(lua_State* L) {
-  ray_actor_t* self = rayL_actor_new(L, RAY_UDP_T, &ray_net_udp_v);
-  self->L   = lua_newthread(L);
-  self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+static int udp_new(lua_State* L) {
+  ray_actor_t* self = ray_actor_new(L, RAY_UDP_T, &udp_v);
   uv_udp_init(ray_get_loop(L), &self->h.udp);
   return 1;
 }
 
-static int ray_udp_bind(lua_State* L) {
+static int udp_bind(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
-  const char*   host = luaL_checkstring(L, 2);
-  int           port = luaL_checkint(L, 3);
+  const char*  host = luaL_checkstring(L, 2);
+  int          port = luaL_checkint(L, 3);
 
   int flags = 0;
 
@@ -311,7 +314,7 @@ static void _send_cb(uv_udp_send_t* req, int status) {
   ray_rouse(curr, self);
 }
 
-static int ray_udp_send(lua_State* L) {
+static int udp_send(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
   ray_actor_t* curr = ray_get_self(L);
 
@@ -362,15 +365,15 @@ static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct socka
   lua_settop(self->L, 0);
 }
 
-static int ray_udp_recv(lua_State* L) {
+static int udp_recv(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
-  uv_udp_recv_start(&self->h.udp, rayL_alloc_cb, _recv_cb);
+  uv_udp_recv_start(&self->h.udp, ray_alloc_cb, _recv_cb);
   return ray_await(ray_get_self(L), self);
 }
 
 static const char* RAY_UDP_MEMBERSHIP_OPTS[] = { "join", "leave", NULL };
 
-int ray_udp_membership(lua_State* L) {
+static int udp_membership(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
   const char*  iaddr = luaL_checkstring(L, 3);
   const char*  maddr = luaL_checkstring(L, 2);
@@ -386,52 +389,56 @@ int ray_udp_membership(lua_State* L) {
   return 0;
 }
 
-static int ray_udp_free(lua_State *L) {
+static int udp_free(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   ray_close(self);
+  ray_actor_free(self);
   return 1;
 }
-static int ray_udp_tostring(lua_State *L) {
+static int udp_tostring(lua_State *L) {
   ray_actor_t *self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_UDP_T, self);
   return 1;
 }
 
-static luaL_Reg ray_net_funcs[] = {
-  {"tcp",         ray_tcp_new},
-  {"udp",         ray_udp_new},
-  {"getaddrinfo", ray_getaddrinfo},
+static luaL_Reg net_funcs[] = {
+  {"tcp",         tcp_new},
+  {"udp",         udp_new},
+  {"getaddrinfo", net_getaddrinfo},
   {NULL,          NULL}
 };
 
-static luaL_Reg ray_tcp_meths[] = {
-  {"bind",        ray_tcp_bind},
-  {"connect",     ray_tcp_connect},
-  {"getsockname", ray_tcp_getsockname},
-  {"getpeername", ray_tcp_getpeername},
-  {"keepalive",   ray_tcp_keepalive},
-  {"nodelay",     ray_tcp_nodelay},
-  {"__tostring",  ray_tcp_tostring},
+static luaL_Reg tcp_meths[] = {
+  {"bind",        tcp_bind},
+  {"connect",     tcp_connect},
+  {"getsockname", tcp_getsockname},
+  {"getpeername", tcp_getpeername},
+  {"keepalive",   tcp_keepalive},
+  {"nodelay",     tcp_nodelay},
+  {"__tostring",  tcp_tostring},
   {NULL,          NULL}
 };
 
-static luaL_Reg ray_udp_meths[] = {
-  {"bind",        ray_udp_bind},
-  {"send",        ray_udp_send},
-  {"recv",        ray_udp_recv},
-  {"membership",  ray_udp_membership},
-  {"__gc",        ray_udp_free},
-  {"__tostring",  ray_udp_tostring},
+static luaL_Reg udp_meths[] = {
+  {"bind",        udp_bind},
+  {"send",        udp_send},
+  {"recv",        udp_recv},
+  {"membership",  udp_membership},
+  {"__gc",        udp_free},
+  {"__tostring",  udp_tostring},
   {NULL,          NULL}
 };
 
 LUALIB_API int luaopen_ray_net(lua_State* L) {
-  rayL_module(L, "ray.net", ray_net_funcs);
+  rayL_module(L, "ray.net", net_funcs);
+
   rayL_class (L, RAY_TCP_T, ray_stream_meths);
-  luaL_register(L, NULL, ray_tcp_meths);
+  luaL_register(L, NULL, tcp_meths);
   lua_pop(L, 1);
-  rayL_class (L, RAY_UDP_T, ray_udp_meths);
+
+  rayL_class (L, RAY_UDP_T, udp_meths);
   lua_pop(L, 1);
+
   ray_init_main(L);
   return 1;
 }

@@ -2,13 +2,13 @@
 #include "ray_actor.h"
 
 uv_loop_t* ray_get_loop(lua_State* L) {
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_EVENT_LOOP);
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_LOOP);
   uv_loop_t* loop = lua_touserdata(L, -1);
   lua_pop(L, 1);
   if (!loop) {
     loop = uv_loop_new();
     lua_pushlightuserdata(L, (void*)loop);
-    lua_setfield(L, LUA_REGISTRYINDEX, RAY_EVENT_LOOP);
+    lua_setfield(L, LUA_REGISTRYINDEX, RAY_LOOP);
   }
   return loop;
 }
@@ -22,7 +22,7 @@ ray_actor_t* ray_get_self(lua_State* L) {
   return self;
 }
 
-ray_actor_t* rayL_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
+ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   ray_actor_t* self = (ray_actor_t*)lua_newuserdata(L, sizeof(ray_actor_t));
   memset(self, 0, sizeof(ray_actor_t));
 
@@ -37,7 +37,9 @@ ray_actor_t* rayL_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) 
   ngx_queue_init(&self->queue);
   ngx_queue_init(&self->cond);
 
-  self->ref = LUA_NOREF;
+  /* every actor has a lua_State* */
+  self->L   = lua_newthread(L);
+  self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
   return self;
 }
@@ -57,7 +59,8 @@ int rayM_main_rouse(ray_actor_t* self, ray_actor_t* from) {
 int rayM_main_await(ray_actor_t* self, ray_actor_t* that) {
   TRACE("ENTER MAIN AWAIT, queue empty? %i\n", ngx_queue_empty(&self->queue));
 
-  uv_loop_t* loop = ray_get_loop(self->L);
+  uv_loop_t*   loop  = self->h.handle.loop;
+  ngx_queue_t* queue = &self->queue;
 
   int events = 0;
   do {
@@ -65,7 +68,7 @@ int rayM_main_await(ray_actor_t* self, ray_actor_t* that) {
     events = uv_run_once(loop);
     if (ray_is_active(self)) break;
   }
-  while (events);
+  while (events || !ngx_queue_empty(queue));
 
   self->flags |= RAY_ACTIVE;
   ngx_queue_remove(&self->cond);
@@ -80,21 +83,26 @@ static void _async_cb(uv_async_t* handle, int status) {
 }
 
 int ray_init_main(lua_State* L) {
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
   if (lua_isnil(L, -1)) {
-    ray_actor_t* self = rayL_actor_new(L, NULL, &ray_main_v);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
 
-    assert(lua_pushthread(L));
+#ifndef WIN32
+  signal(SIGPIPE, SIG_IGN);
+#endif
+
+    ray_actor_t* self = ray_actor_new(L, NULL, &ray_main_v);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
+
+    /* replace our thread with the main thread */
+    luaL_unref(L, LUA_REGISTRYINDEX, self->ref);
+
+    assert(lua_pushthread(L)); /* must be main thread */
     lua_pushvalue(L, -2);
     lua_rawset(L, LUA_REGISTRYINDEX);
-
+    assert(ray_get_self(L) == self);
     self->flags = RAY_ACTIVE;
     self->L = L;
-
-    ngx_queue_init(&self->queue);
-    ngx_queue_init(&self->cond);
 
     uv_async_init(ray_get_loop(L), &self->h.async, _async_cb);
     uv_unref(&self->h.handle);
@@ -106,7 +114,7 @@ int ray_init_main(lua_State* L) {
 }
 
 ray_actor_t* ray_get_main(lua_State* L) {
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, -1);
   lua_pop(L, 1);
   return self;
@@ -143,21 +151,12 @@ int ray_notify(ray_actor_t* self, int narg) {
   return count;
 }
 
-/* polymorphic state methods with some default implementations */
-int rayM_state_close(ray_actor_t* self) {
+int ray_actor_free(ray_actor_t* self) {
   /* unanchor from registry */
-  if (self->L) {
+  if (self->ref != LUA_NOREF) {
     lua_settop(self->L, 0);
-    if (self->ref != LUA_NOREF) {
-      luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
-      self->ref = LUA_NOREF;
-    }
-    else {
-      lua_pushthread(self->L);
-      lua_pushnil(self->L);
-      lua_settable(self->L, LUA_REGISTRYINDEX);
-    }
-    self->L = NULL;
+    luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
+    self->ref = LUA_NOREF;
   }
   return 1;
 }

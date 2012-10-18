@@ -1,15 +1,15 @@
-#ifndef _RAY_STATE_H_
-#define _RAY_STATE_H_
+#ifndef _RAY_ACTOR_H_
+#define _RAY_ACTOR_H_
 
 #include "ray_common.h"
 #include "ray_hash.h"
 #include "ray_list.h"
 
-#define RAY_EVENT_LOOP "ray:event:loop"
-#define RAY_STATE_MAIN "ray:state:main"
+#define RAY_LOOP "ray:loop"
+#define RAY_MAIN "ray:main"
 
-/* state flags */
-#define RAY_START  (1 << 0) /* initial state */
+/* actor flags */
+#define RAY_START  (1 << 0) /* initial actor */
 #define RAY_ACTIVE (1 << 1) /* currently running */
 #define RAY_CLOSED (1 << 2) /* not among the living */
 
@@ -17,7 +17,6 @@
 #define ray_is_active(S) ((S)->flags & RAY_ACTIVE)
 #define ray_is_closed(S) ((S)->flags & RAY_CLOSED)
 
-/* ray states */
 typedef struct ray_actor_s ray_actor_t;
 
 typedef union ray_data_u {
@@ -57,7 +56,7 @@ ray_actor_t* ray_get_self(lua_State* L);
 ray_actor_t* ray_get_main(lua_State* L);
 
 
-ray_actor_t* rayL_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);
+ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);
 
 int ray_await(ray_actor_t* self, ray_actor_t* that);
 int ray_rouse(ray_actor_t* self, ray_actor_t* from);
@@ -67,7 +66,7 @@ int ray_xcopy(ray_actor_t* self, ray_actor_t* that, int narg);
 
 int ray_notify(ray_actor_t* self, int narg);
 
-/* default state methods */
-int rayM_state_close(ray_actor_t* self);
+/* call this from __gc to release self->L */
+int ray_actor_free(ray_actor_t* self);
 
-#endif /* _RAY_STATE_H_ */
+#endif /* _RAY_ACTOR_H_ */

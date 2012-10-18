@@ -3,7 +3,7 @@
 #include "ray_actor.h"
 #include "ray_thread.h"
 
-static const ray_vtable_t ray_thread_v = {
+static const ray_vtable_t thread_v = {
   await : rayM_main_await,
   rouse : rayM_main_rouse,
   close : rayM_thread_close
@@ -39,7 +39,7 @@ static void _thread_enter(void* arg) {
   self->flags |= RAY_CLOSED;
 }
 
-ray_actor_t* rayL_thread_new(lua_State* L) {
+ray_actor_t* ray_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
 
@@ -48,7 +48,7 @@ ray_actor_t* rayL_thread_new(lua_State* L) {
 
   memset(self, 0, sizeof(ray_actor_t));
 
-  self->v = ray_thread_v;
+  self->v = thread_v;
   self->L = L1;
 
   ngx_queue_init(&self->queue);
@@ -63,7 +63,7 @@ ray_actor_t* rayL_thread_new(lua_State* L) {
 
   /* keep a reference for reverse lookup in child */
   lua_pushlightuserdata(L1, (void*)self);
-  lua_setfield(L1, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
+  lua_setfield(L1, LUA_REGISTRYINDEX, RAY_MAIN);
 
   /* luaopen_ray(L1); */
 
@@ -94,19 +94,19 @@ int rayM_thread_close(ray_actor_t* self) {
     uv_loop_delete(loop);
 
     lua_pushnil(self->L);
-    lua_setfield(self->L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
+    lua_setfield(self->L, LUA_REGISTRYINDEX, RAY_MAIN);
   }
   return 1;
 }
 
 /* Lua API */
-static int ray_thread_new(lua_State* L) {
-  ray_actor_t* self = rayL_thread_new(L);
+static int thread_new(lua_State* L) {
+  ray_actor_t* self = ray_thread_new(L);
   TRACE("new thread: %p in %p", self, L);
   return 1;
 }
 
-static int ray_thread_join(lua_State* L) {
+static int thread_join(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   ray_actor_t* from = ray_get_self(L);
 
@@ -130,33 +130,33 @@ static int ray_thread_join(lua_State* L) {
   return nret;
 }
 
-static int ray_thread_free(lua_State* L) {
+static int thread_free(lua_State* L) {
   ray_actor_t* self = lua_touserdata(L, 1);
   TRACE("FREE: %p\n", self);
   rayM_thread_close(self);
   return 1;
 }
-static int ray_thread_tostring(lua_State* L) {
+static int thread_tostring(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_THREAD_T, self);
   return 1;
 }
 
-static luaL_Reg ray_thread_funcs[] = {
-  {"spawn",     ray_thread_new},
+static luaL_Reg thread_funcs[] = {
+  {"spawn",     thread_new},
   {NULL,        NULL}
 };
 
-static luaL_Reg ray_thread_meths[] = {
-  {"join",      ray_thread_join},
-  {"__gc",      ray_thread_free},
-  {"__tostring",ray_thread_tostring},
+static luaL_Reg thread_meths[] = {
+  {"join",      thread_join},
+  {"__gc",      thread_free},
+  {"__tostring",thread_tostring},
   {NULL,        NULL}
 };
 
 LUALIB_API int luaopen_ray_thread(lua_State* L) {
-  rayL_module(L, "ray.thread", ray_thread_funcs);
-  rayL_class (L, RAY_THREAD_T, ray_thread_meths);
+  rayL_module(L, "ray.thread", thread_funcs);
+  rayL_class (L, RAY_THREAD_T, thread_meths);
   lua_pop(L, 1);
   ray_init_main(L);
   return 1;

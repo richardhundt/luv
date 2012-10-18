@@ -3,7 +3,7 @@
 
 #include "ray_actor.h"
 
-ray_actor_t* rayM_fiber_new(lua_State* L);
+ray_actor_t* ray_fiber_new(lua_State* L);
 
 void rayM_fiber_init (ray_actor_t* self, int narg);
 
