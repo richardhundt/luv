@@ -1,5 +1,4 @@
 #include "ray_lib.h"
-#include "ray_hash.h"
 #include "ray_codec.h"
 #include "ray_state.h"
 #include "ray_thread.h"
@@ -51,7 +50,6 @@ ray_state_t* rayL_thread_new(lua_State* L) {
 
   self->v = ray_thread_v;
   self->L = L1;
-  self->u.hash = rayL_hash_new(4);
 
   ngx_queue_init(&self->queue);
   ngx_queue_init(&self->cond);
@@ -79,7 +77,7 @@ ray_state_t* rayL_thread_new(lua_State* L) {
 
   uv_thread_t tid;
   uv_thread_create(&tid, _thread_enter, self);
-  rayL_hash_set(self->u.hash, "tid", (void*)tid);
+  self->u.data = (void*)tid;
 
   /* inserted udata below function, so now just udata on top */
   lua_settop(L, 1);
@@ -97,7 +95,6 @@ int rayM_thread_close(ray_state_t* self) {
 
     lua_pushnil(self->L);
     lua_setfield(self->L, LUA_REGISTRYINDEX, RAY_STATE_MAIN);
-    rayL_hash_free(self->u.hash);
   }
   return 1;
 }
@@ -115,7 +112,7 @@ static int ray_thread_join(lua_State* L) {
 
   rayS_await(from, self);
 
-  uv_thread_t tid = (uv_thread_t)rayL_hash_get(self->u.hash, "tid");
+  uv_thread_t tid = (uv_thread_t)self->u.data;
   uv_thread_join(&tid);
 
   lua_settop(from->L, 0);

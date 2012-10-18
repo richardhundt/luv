@@ -23,10 +23,20 @@ int rayL_traceback(lua_State* L) {
   return 1;
 }
 
+int rayL_require(lua_State* L, const char* path) {
+  lua_getglobal(L, "require");
+  lua_pushstring(L, path);
+  lua_call(L, 1, 1);
+  return 1;
+}
 int rayL_lib_decoder(lua_State* L) {
   const char* name = lua_tostring(L, -1);
   lua_getfield(L, LUA_REGISTRYINDEX, name);
   TRACE("LIB DECODE HOOK: %s\n", name);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    rayL_require(L, name);
+  }
   assert(lua_istable(L, -1));
   return 1;
 }
@@ -103,18 +113,5 @@ void* rayL_checkudata(lua_State* L, int idx, const char* name) {
   luaL_error(L, "userdata<%s> expected at %i", name, idx);
   /* the above longjmp's anyway, but need to keep gcc happy */
   return NULL;
-}
-
-LUALIB_API int rayL_core_init(lua_State *L) {
-  lua_settop(L, 0);
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);
-  /*
-  if (lua_isnil(L, -1)) {
-    lua_pop(L, 1);
-    luaopen_ray(L);
-    lua_getfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);
-  }
-  */
-  return 1;
 }
 

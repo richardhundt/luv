@@ -1,5 +1,4 @@
 #include "ray_lib.h"
-#include "ray_hash.h"
 #include "ray_state.h"
 #include "ray_timer.h"
 
@@ -39,14 +38,11 @@ static void _timer_cb(uv_timer_t* h, int status) {
   rayS_notify(self, 1);
 }
 int rayM_timer_await(ray_state_t* self, ray_state_t* that) {
-  ngx_queue_insert_tail(&that->queue, &self->cond);
   uv_timer_stop(&self->h.timer);
   return rayS_rouse(that, self);
 }
 int rayM_timer_rouse(ray_state_t* self, ray_state_t* from) {
-  int64_t timeout = (int64_t)rayL_hash_get(self->u.hash, "timeout");
-  int64_t repeat  = (int64_t)rayL_hash_get(self->u.hash, "repeat");
-  uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
+  uv_timer_again(&self->h.timer);
   return 0;
 }
 
@@ -55,7 +51,6 @@ static int ray_timer_new(lua_State* L) {
   ray_state_t* self = rayS_new(L, RAY_TIMER_T, &ray_timer_v);
   self->L   = lua_newthread(L);
   self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  self->u.hash = rayL_hash_new(4);
   uv_timer_init(rayS_get_loop(L), &self->h.timer);
   return 1;
 }
@@ -64,8 +59,6 @@ static int ray_timer_start(lua_State* L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   int64_t timeout = luaL_optlong(L, 2, 0L);
   int64_t repeat  = luaL_optlong(L, 3, 0L);
-  rayL_hash_set(self->u.hash, "timeout", (void*)timeout);
-  rayL_hash_set(self->u.hash, "repeat",  (void*)repeat);
   uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
   return 1;
 }
@@ -92,7 +85,6 @@ static int ray_timer_wait(lua_State *L) {
 static int ray_timer_free(lua_State *L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   rayS_close(self);
-  if (self->u.hash) rayL_hash_free(self->u.hash);
   return 1;
 }
 static int ray_timer_tostring(lua_State *L) {

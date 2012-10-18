@@ -37,26 +37,18 @@ typedef struct ray_vtable_s {
 struct ray_state_s {
   ray_vtable_t  v;
   ray_handle_t  h;
-  ray_req_t     req;
-  ray_buf_t     buf;
-
+  ray_req_t     r;
   lua_State*    L;
   int           flags;
-  int           ref;
-
   ngx_queue_t   queue;
   ngx_queue_t   cond;
-
-  int           narg;
+  ray_buf_t     buf;
+  int           ref;
   ray_data_t    u;
 };
 
-int rayM_main_await (ray_state_t* self, ray_state_t* that);
-int rayM_main_rouse (ray_state_t* self, ray_state_t* from);
-
-int rayM_idle_await (ray_state_t* self, ray_state_t* that);
-int rayM_idle_rouse (ray_state_t* self, ray_state_t* from);
-int rayM_idle_close (ray_state_t* self);
+int rayM_main_await(ray_state_t* self, ray_state_t* that);
+int rayM_main_rouse(ray_state_t* self, ray_state_t* from);
 
 int rayS_init_main(lua_State* L);
 
@@ -65,17 +57,17 @@ ray_state_t* rayS_get_self(lua_State* L);
 ray_state_t* rayS_get_main(lua_State* L);
 
 
-ray_state_t* rayS_new (lua_State* L, const char* m, const ray_vtable_t* v);
+ray_state_t* rayS_new(lua_State* L, const char* m, const ray_vtable_t* v);
 
-int rayS_await (ray_state_t* self, ray_state_t* that);
-int rayS_rouse (ray_state_t* self, ray_state_t* from);
-int rayS_close (ray_state_t* self);
+int rayS_await(ray_state_t* self, ray_state_t* that);
+int rayS_rouse(ray_state_t* self, ray_state_t* from);
+int rayS_close(ray_state_t* self);
 
-int rayS_xcopy (ray_state_t* self, ray_state_t* that, int narg);
+int rayS_xcopy(ray_state_t* self, ray_state_t* that, int narg);
 
 int rayS_notify(ray_state_t* self, int narg);
 
 /* default state methods */
-int rayM_state_close (ray_state_t* self);
+int rayM_state_close(ray_state_t* self);
 
 #endif /* _RAY_STATE_H_ */
