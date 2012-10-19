@@ -17,6 +17,12 @@
 #define ray_is_active(S) ((S)->flags & RAY_ACTIVE)
 #define ray_is_closed(S) ((S)->flags & RAY_CLOSED)
 
+/* mark a section of a C callback as us being active */
+#define ray_active(S) \
+  for ((S)->flags |= RAY_ACTIVE;  \
+       (S)->flags & RAY_ACTIVE;   \
+       (S)->flags &= ~RAY_ACTIVE) \
+
 typedef struct ray_actor_s ray_actor_t;
 
 typedef union ray_data_u {

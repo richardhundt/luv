@@ -110,6 +110,9 @@ LUALIB_API int luaopen_ray_timer(lua_State* L) {
   rayL_module(L, "ray.timer", timer_funcs);
   rayL_class (L, RAY_TIMER_T, timer_meths);
   lua_pop(L, 1);
+
+  ray_init_main(L);
+
   return 1;
 }
 
