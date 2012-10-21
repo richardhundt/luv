@@ -17,7 +17,7 @@ static int ray_new_async(lua_State* L) {
   return 1;
 }
 
-static int ray_async_await(lua_State* L) {
+static int ray_async_recv(lua_State* L) {
   ray_object_t* self = luaL_checkudata(L, RAY_ASYNC_T);
   return 1;
 }
@@ -27,7 +27,7 @@ static luaL_Reg ray_async_funcs[] = {
 };
 
 static luaL_Reg ray_async_meths[] = {
-  {"await",     ray_async_await},
+  {"recv",     ray_async_recv},
   {"__gc",      ray_async_free},
   {"__tostring",ray_async_tostring},
   {NULL,        NULL}

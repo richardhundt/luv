@@ -308,7 +308,7 @@ static int decode_table(lua_State* L, ray_buffer_t* buf, int seen) {
   return 1;
 }
 
-int rayL_codec_encode(lua_State* L, int narg) {
+int ray_codec_encode(lua_State* L, int narg) {
   int i, base, seen;
   ray_buffer_t* buf = rayL_buffer_new(64);
 
@@ -333,7 +333,7 @@ int rayL_codec_encode(lua_State* L, int narg) {
   return 1;
 }
 
-int rayL_codec_decode(lua_State* L) {
+int ray_codec_decode(lua_State* L) {
   size_t len;
   int nval, seen, i;
   int top = lua_gettop(L);
@@ -362,21 +362,21 @@ int rayL_codec_decode(lua_State* L) {
   return nval;
 }
 
-static int ray_codec_encode(lua_State* L) {
-  return rayL_codec_encode(L, lua_gettop(L));
+static int codec_encode(lua_State* L) {
+  return ray_codec_encode(L, lua_gettop(L));
 }
-static int ray_codec_decode(lua_State* L) {
-  return rayL_codec_decode(L);
+static int codec_decode(lua_State* L) {
+  return ray_codec_decode(L);
 }
 
-static luaL_Reg ray_codec_funcs[] = {
-  {"encode",  ray_codec_encode},
-  {"decode",  ray_codec_decode},
+static luaL_Reg codec_funcs[] = {
+  {"encode",  codec_encode},
+  {"decode",  codec_decode},
   {NULL,      NULL},
 };
 
 LUALIB_API int luaopen_ray_codec(lua_State* L) {
-  rayL_module(L, "ray.codec", ray_codec_funcs);
+  rayL_module(L, "ray.codec", codec_funcs);
   return 1;
 }
 

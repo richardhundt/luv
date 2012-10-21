@@ -4,8 +4,8 @@
 #include "ray_thread.h"
 
 static const ray_vtable_t thread_v = {
-  await : rayM_main_await,
-  rouse : rayM_main_rouse,
+  recv : rayM_main_recv,
+  send : rayM_main_send,
   close : rayM_thread_close
 };
 
@@ -13,7 +13,7 @@ static void _thread_enter(void* arg) {
   ray_actor_t* self = (ray_actor_t*)arg;
   TRACE("ENTER: %p, L: %p, top: %i\n", self, self->L, lua_gettop(self->L));
 
-  rayL_codec_decode(self->L);
+  ray_codec_decode(self->L);
 
   TRACE("DECODED: %p, top: %i\n", self, lua_gettop(self->L));
 
@@ -68,16 +68,14 @@ ray_actor_t* ray_thread_new(lua_State* L) {
   /* luaopen_ray(L1); */
 
   lua_settop(L1, 0);
-  rayL_codec_encode(L, narg);
+  ray_codec_encode(L, narg);
   luaL_checktype(L, -1, LUA_TSTRING);
 
   size_t len;
   const char* data = lua_tolstring(L, -1, &len);
   lua_pushlstring(L1, data, len);
 
-  uv_thread_t tid;
-  uv_thread_create(&tid, _thread_enter, self);
-  self->u.data = (void*)tid;
+  uv_thread_create(&self->tid, _thread_enter, self);
 
   /* inserted udata below function, so now just udata on top */
   lua_settop(L, 1);
@@ -110,20 +108,19 @@ static int thread_join(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   ray_actor_t* from = ray_get_self(L);
 
-  ray_await(from, self);
+  ray_recv(from, self);
 
-  uv_thread_t tid = (uv_thread_t)self->u.data;
-  uv_thread_join(&tid);
+  uv_thread_join(&self->tid);
 
   lua_settop(from->L, 0);
 
   size_t len;
   int nret = lua_gettop(self->L);
 
-  rayL_codec_encode(self->L, nret);
+  ray_codec_encode(self->L, nret);
   const char* data = lua_tolstring(self->L, -1, &len);
   lua_pushlstring(from->L, data, len);
-  rayL_codec_decode(from->L);
+  ray_codec_decode(from->L);
 
   rayM_thread_close(self);
 

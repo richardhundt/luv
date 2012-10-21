@@ -29,7 +29,7 @@ static void _done_cb(uv_work_t* req) {
   rayL_state_ready(self->wait);
 }
 
-static int ray_task_await(lua_State* L) {
+static int ray_task_recv(lua_State* L) {
   ray_task_t*  self  = (ray_task_t*)lua_newuserdata(L, sizeof(ray_task_t));
   ray_actor_t* outer = rayL_state_self(L);
 
@@ -38,14 +38,14 @@ static int ray_task_await(lua_State* L) {
   self->loop  = outer->loop;
   self->L     = lua_newstate();
 
-  ngx_queue_init(&self->rouse);
+  ngx_queue_init(&self->send);
   ngx_queue_init(&self->queue);
 
   uv_queue_work(rayL_event_loop(L), &self->h.work, _work_cb, _done_cb);
 }
 
 luaL_Reg ray_task_funcs[] = {
-  {"await",     ray_task_await},
+  {"recv",     ray_task_recv},
   {NULL,        NULL}
 };
 

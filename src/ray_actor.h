@@ -9,19 +9,21 @@
 #define RAY_MAIN "ray:main"
 
 /* actor flags */
-#define RAY_START  (1 << 0) /* initial actor */
-#define RAY_ACTIVE (1 << 1) /* currently running */
-#define RAY_CLOSED (1 << 2) /* not among the living */
+#define RAY_CLOSED (1 << 31) /* not among the living */
 
-#define ray_is_start(S)  ((S)->flags & RAY_START)
-#define ray_is_active(S) ((S)->flags & RAY_ACTIVE)
 #define ray_is_closed(S) ((S)->flags & RAY_CLOSED)
+#define ray_is_active(A) ngx_queue_empty(&(A)->cond)
 
-/* mark a section of a C callback as us being active */
-#define ray_active(S) \
-  for ((S)->flags |= RAY_ACTIVE;  \
-       (S)->flags & RAY_ACTIVE;   \
-       (S)->flags &= ~RAY_ACTIVE) \
+
+#define ray_dequeue(A) \
+  TRACE("ray_dequeue: %p\n", A); \
+  ngx_queue_remove(&(A)->cond); \
+  ngx_queue_init(&(A)->cond)
+
+#define ray_enqueue(A,B) \
+  ray_dequeue(B); \
+  TRACE("ray_enqueue: %p, %p\n", A, B); \
+  ngx_queue_insert_tail(&(A)->queue, &(B)->cond)
 
 typedef struct ray_actor_s ray_actor_t;
 
@@ -34,8 +36,8 @@ typedef union ray_data_u {
 typedef uv_buf_t ray_buf_t;
 
 typedef struct ray_vtable_s {
-  int (*await)(ray_actor_t* self, ray_actor_t* that);
-  int (*rouse)(ray_actor_t* self, ray_actor_t* from);
+  int (*send )(ray_actor_t* self, ray_actor_t* from, int narg);
+  int (*recv )(ray_actor_t* self, ray_actor_t* that);
   int (*close)(ray_actor_t* self);
 } ray_vtable_t;
 
@@ -43,7 +45,8 @@ struct ray_actor_s {
   ray_vtable_t  v;
   ray_handle_t  h;
   ray_req_t     r;
-  lua_State*    L;
+  lua_State*    L;   /* mailbox */
+  uv_thread_t   tid;
   int           flags;
   ngx_queue_t   queue;
   ngx_queue_t   cond;
@@ -52,8 +55,8 @@ struct ray_actor_s {
   ray_data_t    u;
 };
 
-int rayM_main_await(ray_actor_t* self, ray_actor_t* that);
-int rayM_main_rouse(ray_actor_t* self, ray_actor_t* from);
+int rayM_main_recv(ray_actor_t* self, ray_actor_t* that);
+int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg);
 
 int ray_init_main(lua_State* L);
 
@@ -64,13 +67,18 @@ ray_actor_t* ray_get_main(lua_State* L);
 
 ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);
 
-int ray_await(ray_actor_t* self, ray_actor_t* that);
-int ray_rouse(ray_actor_t* self, ray_actor_t* from);
+/* if `self' has mail, then move it to `from' and cede
+   else suspend and wait for signal */
+int ray_recv (ray_actor_t* self, ray_actor_t* from);
+/* send nargs from `from's mailbox, and notify self */
+int ray_send (ray_actor_t* self, ray_actor_t* from, int narg);
 int ray_close(ray_actor_t* self);
 
+int ray_push (ray_actor_t* self, int narg);
 int ray_xcopy(ray_actor_t* self, ray_actor_t* that, int narg);
 
 int ray_notify(ray_actor_t* self, int narg);
+int ray_signal(ray_actor_t* self, int narg);
 
 /* call this from __gc to release self->L */
 int ray_actor_free(ray_actor_t* self);

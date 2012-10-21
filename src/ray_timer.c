@@ -3,8 +3,8 @@
 #include "ray_timer.h"
 
 static const ray_vtable_t timer_v = {
-  await : rayM_timer_await,
-  rouse : rayM_timer_rouse,
+  recv : rayM_timer_recv,
+  send : rayM_timer_send,
   close : rayM_timer_close
 };
 
@@ -22,7 +22,7 @@ static int timer_sleep(lua_State* L) {
   lua_xmove(L, self->L, 1); /* keep self in our stack to avoid GC */
   uv_timer_init(ray_get_loop(L), &self->h.timer);
   uv_timer_start(&self->h.timer, _sleep_cb, (long)(timeout * 1000), 0L);
-  return ray_await(curr, self);
+  return ray_recv(curr, self);
 }
 
 static void _timer_cb(uv_timer_t* h, int status) {
@@ -31,12 +31,20 @@ static void _timer_cb(uv_timer_t* h, int status) {
   lua_pushboolean(self->L, 1);
   ray_notify(self, 1);
 }
-int rayM_timer_await(ray_actor_t* self, ray_actor_t* that) {
-  uv_timer_stop(&self->h.timer);
-  return ray_rouse(that, self);
+int rayM_timer_recv(ray_actor_t* self, ray_actor_t* that) {
+  //uv_timer_stop(&self->h.timer);
+  return ray_send(that, self, 1);
 }
-int rayM_timer_rouse(ray_actor_t* self, ray_actor_t* from) {
-  uv_timer_again(&self->h.timer);
+int rayM_timer_send(ray_actor_t* self, ray_actor_t* from, int narg) {
+  if (lua_gettop(self->L)) {
+    int64_t timeout = luaL_optlong(self->L, 1, 0L);
+    int64_t repeat  = luaL_optlong(self->L, 2, 0L);
+    uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
+    lua_settop(self->L, 0);
+  }
+  else {
+    uv_timer_again(&self->h.timer);
+  }
   return 0;
 }
 int rayM_timer_close(ray_actor_t* self) {
@@ -75,7 +83,7 @@ static int timer_wait(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   ray_actor_t* curr = ray_get_self(L);
   lua_settop(curr->L, 0);
-  return ray_await(curr, self);
+  return ray_recv(self, curr);
 }
 
 static int timer_free(lua_State *L) {

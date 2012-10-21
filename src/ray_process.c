@@ -13,7 +13,7 @@ void _exit_cb(uv_process_t* handle, int status, int sigterm) {
   lua_pushinteger(L, status);
   lua_pushinteger(L, sigterm);
 
-  rayL_cond_signal(&self->rouse);
+  rayL_cond_signal(&self->send);
 }
 
 /*
@@ -145,7 +145,7 @@ static int ray_new_process(lua_State* L) {
     return 1;
   }
   else {
-    return rayL_cond_wait(&self->rouse, curr);
+    return rayL_cond_wait(&self->send, curr);
   }
 }
 

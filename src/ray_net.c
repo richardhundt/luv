@@ -4,8 +4,8 @@
 #include <string.h>
 
 static ray_vtable_t tcp_v = {
-  await: rayM_stream_await,
-  rouse: rayM_stream_rouse,
+  recv: rayM_stream_recv,
+  send: rayM_stream_send,
   close: rayM_stream_close
 };
 
@@ -117,7 +117,7 @@ static int net_getaddrinfo(lua_State* L) {
     return luaL_error(L, uv_strerror(err));
   }
 
-  return ray_await(curr, curr);
+  return ray_recv(curr, curr);
 }
 
 static int tcp_bind(lua_State* L) {
@@ -167,7 +167,7 @@ static int tcp_connect(lua_State *L) {
     return 2;
   }
 
-  return ray_await(curr, self);
+  return ray_recv(curr, self);
 }
 
 static int tcp_nodelay(lua_State* L) {
@@ -278,8 +278,8 @@ static int tcp_tostring(lua_State *L) {
 }
 
 static ray_vtable_t udp_v = {
-  await: rayM_stream_await,
-  rouse: rayM_stream_rouse,
+  recv: rayM_stream_recv,
+  send: rayM_stream_send,
   close: rayM_stream_close
 };
 
@@ -311,7 +311,7 @@ static void _send_cb(uv_udp_send_t* req, int status) {
   ray_actor_t* self = (ray_actor_t*)req->data;
   lua_settop(curr->L, 0);
   lua_pushinteger(curr->L, status);
-  ray_rouse(curr, self);
+  ray_send(curr, self);
 }
 
 static int udp_send(lua_State* L) {
@@ -335,7 +335,7 @@ static int udp_send(lua_State* L) {
     return luaL_error(L, uv_strerror(err));
   }
 
-  return ray_await(curr, self);
+  return ray_recv(curr, self);
 }
 
 static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct sockaddr* peer, unsigned flags) {
@@ -368,7 +368,7 @@ static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct socka
 static int udp_recv(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
   uv_udp_recv_start(&self->h.udp, ray_alloc_cb, _recv_cb);
-  return ray_await(ray_get_self(L), self);
+  return ray_recv(ray_get_self(L), self);
 }
 
 static const char* RAY_UDP_MEMBERSHIP_OPTS[] = { "join", "leave", NULL };

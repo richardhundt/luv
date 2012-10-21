@@ -16,6 +16,7 @@ int rayL_class  (lua_State* L, const char* name, luaL_Reg* meths);
 int rayL_require(lua_State* L, const char* name);
 
 void* rayL_checkudata(lua_State* L, int idx, const char* name);
+void  rayL_dump_stack(lua_State* L);
 
 typedef struct ray_const_reg_s {
   const char*  key;

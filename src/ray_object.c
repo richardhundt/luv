@@ -4,7 +4,7 @@
 #include "ray_object.h"
 
 void rayL_object_init(ray_object_t* self, uv_loop_t* loop) {
-  rayL_list_init(&self->rouse);
+  rayL_list_init(&self->send);
   rayL_list_init(&self->queue);
   self->flags = 0;
   self->loop  = loop;
@@ -33,7 +33,7 @@ static void _close_cb(uv_handle_t* handle) {
   ray_object_t* self = rayL_object_self(handle);
   TRACE("object closed %p\n", self);
   self->flags |= RAY_OCLOSED;
-  rayL_cond_signal(&self->rouse);
+  rayL_cond_signal(&self->send);
 }
 
 void rayL_object_close(ray_object_t* self) {

@@ -27,16 +27,16 @@ int rayL_cond_signal(ray_cond_t* cond) {
 int rayL_cond_broadcast(ray_cond_t* cond) {
   ngx_queue_t* q;
   ray_actor_t* s;
-  int roused = 0;
+  int sendd = 0;
   while (!ngx_queue_empty(cond)) {
     q = ngx_queue_head(cond);
     s = ngx_queue_data(q, ray_actor_t, cond);
     ngx_queue_remove(q);
     TRACE("READY state %p\n", s);
     rayL_state_ready(s);
-    ++roused;
+    ++sendd;
   }
-  return roused;
+  return sendd;
 }
 
 static int ray_cond_new(lua_State* L) {

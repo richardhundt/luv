@@ -115,3 +115,44 @@ void* rayL_checkudata(lua_State* L, int idx, const char* name) {
   return NULL;
 }
 
+#ifdef RAY_DEBUG
+void rayL_dump_stack(lua_State* L) {
+  int i;
+  int top = lua_gettop(L);
+  printf("--------------- STACK ---------------\n");
+  for (i = top; i >= 1; i--) {
+    int t = lua_type(L, i);
+    printf("Stack[%2d - %8s] : ", i, lua_typename(L, t));
+    switch (t) {
+      case LUA_TSTRING:
+        printf("%s", lua_tostring(L, i));
+        break;
+      case LUA_TBOOLEAN:
+        printf(lua_toboolean(L, i) ? "true" : "false");
+        break;
+      case LUA_TNUMBER:
+        printf("%g", lua_tonumber(L, i));
+        break;
+      case LUA_TNIL:
+        printf("nil");
+        break;
+      case LUA_TFUNCTION:
+        printf("function");
+        break;
+      case LUA_TTHREAD:
+        printf("thread");
+        break;
+      case LUA_TUSERDATA:
+        printf("userdata");
+        break;
+      default:
+        printf("%s", lua_typename(L, t));
+        break;
+    }
+    printf("\n");
+  }
+  printf("-------------------------------------\n");
+}
+#else
+#define rayL_dump_stack(L) (void)(L)
+#endif /* RAY_DEBUG */

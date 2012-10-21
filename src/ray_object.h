@@ -33,7 +33,7 @@ int  rayL_object_free  (ray_object_t* self);
   int           flags;    \
   int           count;    \
   uv_buf_t      buf;      \
-  ngx_queue_t   rouse;    \
+  ngx_queue_t   send;    \
   ngx_queue_t   queue;    \
   uv_loop_t*    loop;     \
   ray_hash_t*   hash;     \

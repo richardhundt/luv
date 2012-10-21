@@ -19,8 +19,8 @@ int ray_stream_writable(ray_actor_t* self, ray_actor_t* from);
 int ray_stream_close(ray_actor_t* self, ray_actor_t* from);
 int ray_stream_free (ray_actor_t* self);
 
-int rayM_stream_rouse(ray_actor_t* self, ray_actor_t* from);
-int rayM_stream_await(ray_actor_t* self, ray_actor_t* that);
+int rayM_stream_send(ray_actor_t* self, ray_actor_t* from);
+int rayM_stream_recv(ray_actor_t* self, ray_actor_t* that);
 int rayM_stream_close(ray_actor_t* self);
 
 luaL_Reg ray_stream_meths[16];

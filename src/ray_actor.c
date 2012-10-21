@@ -1,5 +1,7 @@
 #include "ray_common.h"
+#include "ray_lib.h"
 #include "ray_actor.h"
+#include "ray_codec.h"
 
 uv_loop_t* ray_get_loop(lua_State* L) {
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_LOOP);
@@ -23,6 +25,7 @@ ray_actor_t* ray_get_self(lua_State* L) {
 }
 
 ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
+  int top = lua_gettop(L);
   ray_actor_t* self = (ray_actor_t*)lua_newuserdata(L, sizeof(ray_actor_t));
   memset(self, 0, sizeof(ray_actor_t));
 
@@ -38,43 +41,68 @@ ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   ngx_queue_init(&self->cond);
 
   /* every actor has a lua_State* */
-  self->L   = lua_newthread(L);
+  self->L = lua_newthread(L);
+
+  /* anchored in the registry */
   self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
+  /* with a copy of `self' on its stack */
+  /*
+  lua_pushvalue(L, -1);
+  lua_xmove(L, self->L, 1);
+  */
+
+  /* and knows its thread boundary */
+  self->tid   = (uv_thread_t)uv_thread_self();
+  self->flags = 0;
+  assert(lua_gettop(L) == top + 1);
   return self;
 }
 
 static const ray_vtable_t ray_main_v = {
-  await : rayM_main_await,
-  rouse : rayM_main_rouse
+  recv : rayM_main_recv,
+  send : rayM_main_send
 };
 
-int rayM_main_rouse(ray_actor_t* self, ray_actor_t* from) {
-  TRACE("main rouse %p from %p\n", self, from);
+int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg) {
+  TRACE("sending to main, narg: %i...\n", narg);
+  lua_State* L = (lua_State*)self->u.data;
   if (ngx_queue_empty(&self->queue)) {
     uv_async_send(&self->h.async);
   }
-  return 1;
+  rayL_dump_stack(self->L);
+  lua_xmove(self->L, L, narg);
+  return 0;
 }
-int rayM_main_await(ray_actor_t* self, ray_actor_t* that) {
+int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   TRACE("ENTER MAIN AWAIT, queue empty? %i\n", ngx_queue_empty(&self->queue));
 
   uv_loop_t*   loop  = self->h.handle.loop;
   ngx_queue_t* queue = &self->queue;
 
+  ngx_queue_t* q;
+  ray_actor_t* a;
+  int n;
+
   int events = 0;
+  lua_State* L = (lua_State*)self->u.data;
+
+  lua_settop(L, 0);
+  ray_enqueue(self, from);
   do {
+    TRACE("MAIN LOOP TOP\n");
     ray_notify(self, 0);
     events = uv_run_once(loop);
-    if (ray_is_active(self)) break;
+    if (ray_is_active(self)) {
+      TRACE("IS ACTIVE\n");
+      break;
+    }
   }
   while (events || !ngx_queue_empty(queue));
 
-  self->flags |= RAY_ACTIVE;
-  ngx_queue_remove(&self->cond);
-
-  TRACE("UNLOOP\n");
-  return lua_gettop(self->L);
+  TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
+  rayL_dump_stack(L);
+  return lua_gettop(L);
 }
 
 static void _async_cb(uv_async_t* handle, int status) {
@@ -94,19 +122,21 @@ int ray_init_main(lua_State* L) {
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
 
-    /* replace our thread with the main thread */
-    luaL_unref(L, LUA_REGISTRYINDEX, self->ref);
+    self->u.data = L;
 
     assert(lua_pushthread(L)); /* must be main thread */
+
+    /* set up our reverse lookup */
     lua_pushvalue(L, -2);
     lua_rawset(L, LUA_REGISTRYINDEX);
     assert(ray_get_self(L) == self);
-    self->flags = RAY_ACTIVE;
-    self->L = L;
+
+    self->tid = (uv_thread_t)uv_thread_self();
 
     uv_async_init(ray_get_loop(L), &self->h.async, _async_cb);
     uv_unref(&self->h.handle);
 
+    lua_settop(self->L, 0);
     lua_pop(L, 1);
   }
   lua_pop(L, 1);
@@ -135,6 +165,17 @@ int ray_xcopy(ray_actor_t* a, ray_actor_t* b, int narg) {
   return narg;
 }
 
+int ray_push(ray_actor_t* self, int narg) {
+  int i, base;
+  base = lua_gettop(self->L) - narg + 1;
+  lua_checkstack(self->L, narg);
+  for (i = base; i < base + narg; i++) {
+    lua_pushvalue(self->L, i);
+  }
+  return narg;
+}
+
+/* broadcast to all waiting actors */
 int ray_notify(ray_actor_t* self, int narg) {
   int count = 0;
   ngx_queue_t* q;
@@ -143,8 +184,25 @@ int ray_notify(ray_actor_t* self, int narg) {
   while (!ngx_queue_empty(&self->queue)) {
     q = ngx_queue_head(&self->queue);
     s = ngx_queue_data(q, ray_actor_t, cond);
-    if (narg) ray_xcopy(self, s, narg);
-    ray_rouse(s, self);
+    ray_push(self, narg);
+    ray_send(s, self, narg);
+    count++;
+  }
+  if (narg) lua_pop(self->L, narg);
+  return count;
+}
+
+/* wake one waiting actor */
+int ray_signal(ray_actor_t* self, int narg) {
+  int count = 0;
+  ngx_queue_t* q;
+  ray_actor_t* s;
+  if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
+  if (!ngx_queue_empty(&self->queue)) {
+    q = ngx_queue_head(&self->queue);
+    s = ngx_queue_data(q, ray_actor_t, cond);
+    ray_push(self, narg);
+    ray_send(s, self, narg);
     count++;
   }
   if (narg) lua_pop(self->L, narg);
@@ -161,25 +219,32 @@ int ray_actor_free(ray_actor_t* self) {
   return 1;
 }
 
-/* resume this state */
-int ray_rouse(ray_actor_t* self, ray_actor_t* from) {
-  TRACE("rouse %p, from %p\n", self, from);
-  assert(!ray_is_active(self));
-  self->flags |= RAY_ACTIVE;
-  ngx_queue_remove(&self->cond);
-  return self->v.rouse(self, from);
+/* send `self' a message, moving nargs from `from's stack  */
+int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
+  if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
+  if (self->tid == from->tid) {
+    /* same global state */
+    lua_xmove(from->L, self->L, narg);
+  }
+  else {
+    size_t len;
+    ray_codec_encode(from->L, narg);
+    const char* data = lua_tolstring(from->L, -1, &len);
+    lua_pushlstring(self->L, data, len);
+    ray_codec_decode(self->L);
+    lua_pop(from->L, narg);
+  }
+
+  ray_dequeue(self);
+  return self->v.send(self, from, narg);
 }
-/* wait for signal */
-int ray_await(ray_actor_t* self, ray_actor_t* that) {
-  TRACE("await %p that %p\n", self, that);
-  assert(ray_is_active(self));
-  self->flags &= ~RAY_ACTIVE;
-  ngx_queue_insert_tail(&that->queue, &self->cond);
-  return self->v.await(self, that);
+/* wait for a message from `from' */
+int ray_recv(ray_actor_t* self, ray_actor_t* from) {
+  ray_enqueue(from, self); /* put myself in from's queue */
+  return self->v.recv(self, from);
 }
 /* terminate a state */
 int ray_close(ray_actor_t* self) {
-  assert(!ray_is_closed(self));
   self->flags |= RAY_CLOSED;
   return self->v.close(self);
 }

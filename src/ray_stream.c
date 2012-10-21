@@ -110,10 +110,10 @@ static void _close_cb(uv_handle_t* handle) {
   ray_actor_free(self);
 }
 
-int rayM_stream_await(ray_actor_t* self, ray_actor_t* that) {
+int rayM_stream_recv(ray_actor_t* self, ray_actor_t* that) {
   return ray_stream_stop(self);
 }
-int rayM_stream_rouse(ray_actor_t* self, ray_actor_t* from) {
+int rayM_stream_send(ray_actor_t* self, ray_actor_t* from) {
   return ray_stream_start(self);
 }
 int rayM_stream_close(ray_actor_t* self) {
@@ -148,7 +148,7 @@ int ray_stream_read(ray_actor_t* self, ray_actor_t* from, int len) {
     self->buf.len  = len;
   }
   ray_stream_start(self);
-  return ray_await(from, self);
+  return ray_recv(from, self);
 }
 
 int ray_stream_write(ray_actor_t* self, ray_actor_t* from, uv_buf_t* b, int n) {
@@ -163,7 +163,7 @@ int ray_stream_write(ray_actor_t* self, ray_actor_t* from, uv_buf_t* b, int n) {
   }
 
   ray_stream_stop(self);
-  return ray_await(from, self);
+  return ray_recv(from, self);
 }
 
 int ray_stream_listen(ray_actor_t* self, ray_actor_t* from, int backlog) {
@@ -192,14 +192,14 @@ int ray_stream_accept(ray_actor_t* self, ray_actor_t* from, ray_actor_t* conn) {
   }
   else {
     lua_pushlightuserdata(self->L, conn);
-    return ray_await(from, self);
+    return ray_recv(from, self);
   }
 }
 
 int ray_stream_shutdown(ray_actor_t* self, ray_actor_t* from) {
   from->r.req.data = self;
   uv_shutdown(&from->r.shutdown, &self->h.stream, _shutdown_cb);
-  return ray_await(from, self);
+  return ray_recv(from, self);
 }
 
 int ray_stream_readable(ray_actor_t* self, ray_actor_t* from) {
@@ -215,7 +215,7 @@ int ray_stream_writable(ray_actor_t* self, ray_actor_t* from) {
 int ray_stream_close(ray_actor_t* self, ray_actor_t* from) {
   if (!ray_is_closed(self)) {
     ray_close(self);
-    return ray_await(from, self);
+    return ray_recv(from, self);
   }
   return 0;
 }

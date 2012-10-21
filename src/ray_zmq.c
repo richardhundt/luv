@@ -61,7 +61,7 @@ static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
 
     self->flags &= ~RAY_ZMQ_WRECV;
 
-    ngx_queue_t* queue = ngx_queue_head(&self->rouse);
+    ngx_queue_t* queue = ngx_queue_head(&self->send);
     ray_actor_t* state = ngx_queue_data(queue, ray_actor_t, cond);
     ngx_queue_remove(queue);
 
@@ -200,7 +200,7 @@ static int ray_zmq_socket_recv(lua_State* L) {
     if (err == EAGAIN || err == EWOULDBLOCK) {
       TRACE("EAGAIN during RECV, polling..\n");
       self->flags |= RAY_ZMQ_WRECV;
-      return rayL_cond_wait(&self->rouse, curr);
+      return rayL_cond_wait(&self->send, curr);
     }
     else {
       lua_settop(L, 0);
