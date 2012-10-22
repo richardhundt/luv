@@ -158,11 +158,9 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
 
   do {
     TRACE("MAIN sending signal\n");
-    while (!ngx_queue_empty(queue)) {
-      q = ngx_queue_head(queue);
-      a = ngx_queue_data(q, ray_actor_t, cond);
-      ray_send(a, a, 0);
-    }
+    q = ngx_queue_head(queue);
+    a = ngx_queue_data(q, ray_actor_t, cond);
+    ray_send(a, a, 0);
 
     events = uv_run_once(loop);
 

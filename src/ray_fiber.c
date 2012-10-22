@@ -22,7 +22,6 @@ int rayM_fiber_recv(ray_actor_t* self, ray_actor_t* from) {
 int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   lua_State* L = (lua_State*)self->u.data;
 
-
   if (ray_is_closed(self)) {
     TRACE("IS CLOSED\n");
     ray_notify(self, LUA_MULTRET);
@@ -196,6 +195,9 @@ static int fiber_recv(lua_State* L) {
 }
 static int fiber_free(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
+  if (!(self->flags & RAY_CLOSED)) {
+    ray_send(self, self, 0);
+  }
   ray_actor_free(self);
   return 1;
 }
