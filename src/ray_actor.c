@@ -82,6 +82,7 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   ngx_queue_t* queue = &self->queue;
 
   if (self->flags & RAY_MAIN_ACTIVE) {
+    /* flatten recursion, we have a queue */
     int interrupt = ngx_queue_empty(queue);
     ray_enqueue(self, from);
     if (interrupt) {
@@ -98,18 +99,37 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   lua_State* L = (lua_State*)self->u.data;
 
   lua_settop(L, 0);
+
+  self->flags |= RAY_MAIN_ACTIVE;
+
   do {
     TRACE("MAIN LOOP TOP\n");
-    self->flags |= RAY_MAIN_ACTIVE;
+
+    /* This is the main trampoline which drives scheduling the C actor
+      abstractions. The call to `recv' has suspend semantics. So suspending
+      the main thread until a send signal arrives is done by scheduling
+      actors it is waiting on, and giving the event loop a chance to run.
+
+      An atomic time slice is simply a call to the actor's `send' vtable
+      pointer. It is up to the actor's implementation to decide what to
+      do with that timeslice as it was requested by them in the first
+      place. Their state should have passed through the trampoline
+      unchanged.
+    */
     ray_signal(self, 0);
-    self->flags &= ~RAY_MAIN_ACTIVE;
+
     events = uv_run_once(loop);
+
+    /* ray_is_active tests the actor's active state, not the main lua_State */
     if (ray_is_active(self)) {
-      TRACE("IS ACTIVE\n");
+      /* main has recieved a signal directly */
       break;
     }
   }
   while (events || !ngx_queue_empty(queue));
+
+  /* main lua_State* not pretending to be running */
+  self->flags &= ~RAY_MAIN_ACTIVE;
 
   if (!ray_is_active(self)) {
     return luaL_error(L, "FATAL: deadlock detected");
