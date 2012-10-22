@@ -3,7 +3,18 @@
 
 #include "ray_actor.h"
 
-#define RAY_FIBER_START (1 << 1)
+#define RAY_FIBER_START   (1 << 0)
+#define RAY_FIBER_ACTIVE  (1 << 1)
+#define RAY_FIBER_SUSPEND (1 << 2)
+#define RAY_FIBER_DEAD    (1 << 3)
+
+#define ray_fiber_active(A) \
+  for ((A)->flags |= RAY_FIBER_ACTIVE; \
+      (A)->flags & RAY_FIBER_ACTIVE;   \
+      (A)->flags &= ~RAY_FIBER_ACTIVE)
+
+/* for detecting coroutine.yield */
+#define ray_fiber_is_active(F) ((F)->flags & RAY_FIBER_ACTIVE)
 
 ray_actor_t* ray_fiber_new(lua_State* L);
 

@@ -8,26 +8,32 @@
   mailbox lua_State* on the actor is *not* the same as the coroutine
   state, but is used, instead to pass messages to and fro.
 
-  The Lua interface of the fiber udata presents a channel interface.
-  `send' and `recv' operations interact with the main actor, which,
-  does the scheduling during its own `recv' state.
+  The Lua side of the fiber udata presents a channel interface.
+  The channel supports `send' and `recv' methods which translate to
+  send and recv calls on the underlying actor. The actor itself is
+  responsible for maintaining the lua_State* of the coroutine it's
+  currently running.
 
+  There are two complications to this.
 
-  The channel supports `send' and `recv' methods which interact with
-  the main actor. scheduler.
-  A fiber may `recv' from any fiber, including itself.
+  The first complication is that a udata's `send' and 'recv' methods
+  are callable from both "within" the coroutine, or from the "outside".
 
-  A fiber may `send' to any actor, including itself.
+  The semantics of `recv' is to wait for something to send me a message.
+  Calling `recv' from "within" the fiber implies that a fiber can wait
+  for input. To avoid this from leading to madness, the call to `recv'
+  returns immediately if there is a message in our mailbox. If not, then
+  the actor suspends (it enqueues itself) and awaits a `send'.
 
-  If a fiber called `recv' on a different fiber, then the current
-  fiber is added to that fiber's notification queue, and self then
-  suspends waiting for a `send' signal.
-
-  If the fiber calls `recv' on itself, then it may be in one of two
-  states:
-
-  1) we have been given a `send' before our call to `recv', so we have mail
-  2) we have called `recv' before being sent any mail, so suspend
+  The semantics of `send' is to move n arguments from my mailbox which
+  I've prepared as a message, to another actor's mailbox, and transfer
+  control to that actor. If `send' is called from "within" the coroutine
+  then the self send call just moves the arguments to self's mailbox and
+  returns. Moreover, if this chain of `send' signals
+  were to run synchronously through the tree of actors, then it would mean
+  recursing up the C stack. And to avoid that madness, a fiber will delay
+  all `send'signals which don't come from the `main' actor, by placing
+  itself in the `main' actors notification queue.
 
 */
 
@@ -41,17 +47,16 @@ int rayM_fiber_recv(ray_actor_t* self, ray_actor_t* from) {
   /* from could also be self, but never main */
   /* suspend and keep our stack */
   lua_State* L = (lua_State*)self->u.data;
-  TRACE("self[%p]->L\n", self);
-  rayL_dump_stack(self->L);
-  TRACE("from[%p]->L\n", from);
-  rayL_dump_stack(from->L);
   if (lua_gettop(self->L) > 0) {
-    int narg = lua_gettop(self->L);
+    lua_settop(L, 0);
+    int narg = lua_gettop(self->L) - 1;
+    lua_xmove(self->L, L, narg);
     TRACE("NOTIFY SHORT: narg %i\n", narg);
     ray_notify(self, narg);
     return narg;
   }
   TRACE("calling LUA_YIELD - top: %i\n", lua_gettop(L));
+  self->flags &= ~RAY_FIBER_ACTIVE;
   return lua_yield(L, lua_gettop(L));
 }
 
@@ -62,68 +67,62 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   TRACE("send %p from %p, boss: %p, self active?: %i\n", self, from, boss, ray_is_active(self));
 
   if (ray_is_closed(self)) {
-    ray_notify(self, lua_gettop(L));
+    TRACE("IS CLOSED\n");
+    ray_notify(self, LUA_MULTRET);
     return 0;
   }
 
-  if (from == self) {
-    narg = lua_gettop(self->L);
-    lua_xmove(self->L, L, narg);
-    return narg;
-  }
   if (from != boss) {
-    TRACE("not from boss, enqueue and return\n");
-    if (ngx_queue_empty(&boss->queue)) {
-      uv_async_send(&boss->h.async);
-    }
-    ray_enqueue(boss, self);
+    TRACE("send not from boss, enqueue...\n");
+    self->h.handle.data = from;
+    ray_recv(boss, self);
     return 0;
+  }
+  else {
+    from = (ray_actor_t*)self->h.handle.data;
   }
 
   if (!(self->flags & RAY_FIBER_START)) {
+    self->flags |= RAY_FIBER_START;
     TRACE("first entry\n");
     narg = lua_gettop(L) - 1;
   }
   else {
     narg = lua_gettop(self->L);
+    lua_settop(L, 0);
     lua_xmove(self->L, L, narg);
   }
 
-  /* resume while keeping our stack intact */
-  TRACE("RESUME WITH: %i\n", narg);
-  rayL_dump_stack(L);
+  self->flags |= RAY_FIBER_ACTIVE;
   int rc = lua_resume(L, narg);
+
   TRACE("AFTER RESUME\n");
-  rayL_dump_stack(L);
-
-  narg = lua_gettop(L);
-  if (!(self->flags & RAY_FIBER_START)) {
-    lua_settop(self->L, 0);
-    self->flags |= RAY_FIBER_START;
-    narg--;
-  }
-  lua_xmove(L, self->L, narg);
-
   switch (rc) {
     case LUA_YIELD: {
-      TRACE("seen LUA_YIELD\n");
-      if (ray_is_active(self)) {
-        /* seen coroutine.yield */
-        TRACE("still active, notify\n");
-        ray_notify(self, LUA_MULTRET);
+      TRACE("seen LUA_YIELD, active? %i\n", ray_is_active(self));
+      if (self->flags & RAY_FIBER_ACTIVE) {
+        /* uses coroutine.yield to reply to sender */
+        self->flags &= ~RAY_FIBER_ACTIVE;
+        ray_recv(boss, self);
+
+        narg = lua_gettop(L);
+        lua_xmove(L, self->L, narg);
+
+        ray_signal(self, narg);
       }
       break;
     }
     case 0: {
       /* normal exit, notify waiters, and close */
       TRACE("normal exit\n");
-      ray_notify(self, LUA_MULTRET);
+      narg = lua_gettop(L);
+      lua_xmove(L, self->L, narg);
+      ray_notify(self, narg);
       ray_close(self);
       break;
     }
     default:
       TRACE("ERROR: in fiber\n");
-      exit(1);
       /* propagate the error back to the caller */
       ray_send(from, self, 1);
       ray_close(self);
@@ -204,6 +203,7 @@ static int fiber_send(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
   ray_actor_t* from = (ray_actor_t*)ray_get_self(L);
   TRACE("send %p from %p\n", self, from);
+  lua_settop(self->L, 0);
   int narg = lua_gettop(L) - 1;
   lua_xmove(L, self->L, narg);
   return ray_send(self, from, 0);

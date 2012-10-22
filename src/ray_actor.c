@@ -74,11 +74,21 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   lua_xmove(self->L, L, narg);
   return 0;
 }
+
 int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   TRACE("ENTER MAIN AWAIT, queue empty? %i\n", ngx_queue_empty(&self->queue));
 
   uv_loop_t*   loop  = self->h.handle.loop;
   ngx_queue_t* queue = &self->queue;
+
+  if (self->flags & RAY_MAIN_ACTIVE) {
+    int interrupt = ngx_queue_empty(queue);
+    ray_enqueue(self, from);
+    if (interrupt) {
+      uv_async_send(&self->h.async);
+    }
+    return 0;
+  }
 
   ngx_queue_t* q;
   ray_actor_t* a;
@@ -88,10 +98,11 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   lua_State* L = (lua_State*)self->u.data;
 
   lua_settop(L, 0);
-  ray_enqueue(self, from);
   do {
     TRACE("MAIN LOOP TOP\n");
-    ray_notify(self, 0);
+    self->flags |= RAY_MAIN_ACTIVE;
+    ray_signal(self, 0);
+    self->flags &= ~RAY_MAIN_ACTIVE;
     events = uv_run_once(loop);
     if (ray_is_active(self)) {
       TRACE("IS ACTIVE\n");
@@ -99,6 +110,10 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
     }
   }
   while (events || !ngx_queue_empty(queue));
+
+  if (!ray_is_active(self)) {
+    return luaL_error(L, "FATAL: deadlock detected");
+  }
 
   TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
   rayL_dump_stack(L);
@@ -219,6 +234,15 @@ int ray_actor_free(ray_actor_t* self) {
   return 1;
 }
 
+void ray_schedule(ray_actor_t* that) {
+  ray_actor_t* boss = ray_get_main(that->L);
+  int interrupt = ngx_queue_empty(&boss->queue);
+  ray_enqueue(boss, that);
+  if (interrupt) {
+    uv_async_send(&boss->h.async);
+  }
+}
+
 /* send `self' a message, moving nargs from `from's stack  */
 int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
@@ -234,13 +258,13 @@ int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
     ray_codec_decode(self->L);
     lua_pop(from->L, narg);
   }
-
   ray_dequeue(self);
   return self->v.send(self, from, narg);
 }
+
 /* wait for a message from `from' */
 int ray_recv(ray_actor_t* self, ray_actor_t* from) {
-  ray_enqueue(from, self); /* put myself in from's queue */
+  ray_enqueue(from, self);
   return self->v.recv(self, from);
 }
 /* terminate a state */

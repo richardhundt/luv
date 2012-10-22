@@ -9,21 +9,20 @@
 #define RAY_MAIN "ray:main"
 
 /* actor flags */
-#define RAY_CLOSED (1 << 31) /* not among the living */
+#define RAY_CLOSED (1 << 31)
 
-#define ray_is_closed(S) ((S)->flags & RAY_CLOSED)
+#define ray_is_closed(A) ((A)->flags & RAY_CLOSED)
 #define ray_is_active(A) ngx_queue_empty(&(A)->cond)
 
-
 #define ray_dequeue(A) \
-  TRACE("ray_dequeue: %p\n", A); \
   ngx_queue_remove(&(A)->cond); \
   ngx_queue_init(&(A)->cond)
 
 #define ray_enqueue(A,B) \
   ray_dequeue(B); \
-  TRACE("ray_enqueue: %p, %p\n", A, B); \
   ngx_queue_insert_tail(&(A)->queue, &(B)->cond)
+
+#define RAY_MAIN_ACTIVE (1 << 0)
 
 typedef struct ray_actor_s ray_actor_t;
 
@@ -64,20 +63,24 @@ uv_loop_t*   ray_get_loop(lua_State* L);
 ray_actor_t* ray_get_self(lua_State* L);
 ray_actor_t* ray_get_main(lua_State* L);
 
-
 ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);
 
-/* if `self' has mail, then move it to `from' and cede
-   else suspend and wait for signal */
+/* wait for from to send us a message */
 int ray_recv (ray_actor_t* self, ray_actor_t* from);
+
 /* send nargs from `from's mailbox, and notify self */
 int ray_send (ray_actor_t* self, ray_actor_t* from, int narg);
+
 int ray_close(ray_actor_t* self);
 
+/* stack copy utilities */
 int ray_push (ray_actor_t* self, int narg);
 int ray_xcopy(ray_actor_t* self, ray_actor_t* that, int narg);
 
+/* broadcast nargs from our mailbox to all waiting actors (copies the tuple) */
 int ray_notify(ray_actor_t* self, int narg);
+
+/* wake one waiting actor and send nargs from our mailbox */
 int ray_signal(ray_actor_t* self, int narg);
 
 /* call this from __gc to release self->L */
