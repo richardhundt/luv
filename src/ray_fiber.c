@@ -66,7 +66,7 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
       if (self->flags & RAY_FIBER_ACTIVE) {
         /* uses coroutine.yield to reply to sender */
         self->flags &= ~RAY_FIBER_ACTIVE;
-        ray_recv(ray_get_main(L), self);
+        ray_enqueue(ray_get_main(L), self);
 
         narg = lua_gettop(L);
         lua_xmove(L, self->L, narg);
@@ -173,16 +173,11 @@ static int fiber_spawn(lua_State* L) {
 static int fiber_send(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
   ray_actor_t* from = ray_get_self(L);
-  if (from == self && !lua_gettop(self->L)) {
-    lua_settop(self->L, 0);
+  if (!lua_gettop(self->L)) {
+    TRACE("send %p from %p\n", self, from);
     int narg = lua_gettop(L) - 1;
     lua_xmove(L, self->L, narg);
-    return 0;
   }
-  TRACE("send %p from %p\n", self, from);
-  lua_settop(self->L, 0);
-  int narg = lua_gettop(L) - 1;
-  lua_xmove(L, self->L, narg);
   return ray_send(self, from, 0);
 }
 static int fiber_recv(lua_State* L) {
@@ -190,7 +185,7 @@ static int fiber_recv(lua_State* L) {
   ray_actor_t* from = ray_get_self(L);
 
   TRACE("recv %p from %p\n", self, from);
-  if (from == self && lua_gettop(self->L)) {
+  if (lua_gettop(self->L)) {
     TRACE("short circuit\n");
     lua_settop(L, 0);
     int narg = lua_gettop(self->L);
