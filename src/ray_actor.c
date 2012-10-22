@@ -3,6 +3,60 @@
 #include "ray_actor.h"
 #include "ray_codec.h"
 
+/*
+  The Ray actor system is a C abstraction which functions by synchronous
+  message passing between `ray_actor_t' instances. Each actor has a mailbox
+  which is conceptually unbuffered, i.e. it can contain at most one logical
+  message. However, the mailbox is a plain lua_State* pointer and a message
+  is a Lua tuple, and so may be of any size.
+
+  Each actor also has a signal queue of actors waiting on notifications
+  from it. While each actor may have many actors waiting on it, an actor
+  can only be waiting on one other actor (which may be itself).
+
+  Messages are sent by calling `ray_send`, and awaited by calling `ray_recv`,
+  which have the following semantics:
+
+  * `ray_send' copies messages to the receiving actor's mailbox and calls
+    its `send' hook to notify it that it has mail.
+
+  * `ray_recv' puts the receiving actor in the target actor's notification
+    queue, and calls the receiving actor's `recv' hook.
+
+  Although messages are delivered synchronously, an actor may choose to
+  react asynchronously. This means that the actor needs to have a way to
+  `yield' to allow other actors of which it knows nothing, to run, while
+  ensuring that it is given a timeslice back at a later time.
+
+  To make this work, we have a "main" actor which acts as a trampoline.
+
+  Asynchronous reaction then has the following pattern:
+
+  if from == main then
+    -- resume
+  else
+    main:wait(self)
+    -- yield
+  end
+
+  That is: to `yield' to other actors, the `main' actor is told to wait for
+  us. The `main' actor's waiting behaviour is then to simply signal back to
+  actors in its signal queue, until the queue is exhausted, or it has been
+  sent a message directly, to pass back to the main Lua state.
+
+  The point of all this is to decouple the actor system from the Lua VM, to
+  allow graphs of C level actors to communicate without entering the Lua VM.
+
+  This makes it possible, for instance, to place an HTTP "filters" around
+  a TCP stream and a fiber reading from the filter is only resumed once the
+  HTTP filter has parsed and constructed a full HTTP message.
+
+  So in general you can build any kind of C level sources, filters and sinks
+  and only wire up the end points into Lua at the Lua-C boundary (i.e. the
+  userdata interface presented to Lua by its metatable).
+
+*/
+
 uv_loop_t* ray_get_loop(lua_State* L) {
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_LOOP);
   uv_loop_t* loop = lua_touserdata(L, -1);
@@ -65,12 +119,11 @@ static const ray_vtable_t ray_main_v = {
 };
 
 int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg) {
-  TRACE("sending to main, narg: %i...\n", narg);
+  TRACE("%p sending to main, narg: %i...\n", from, narg);
   lua_State* L = (lua_State*)self->u.data;
   if (ngx_queue_empty(&self->queue)) {
     uv_async_send(&self->h.async);
   }
-  rayL_dump_stack(self->L);
   lua_xmove(self->L, L, narg);
   return 0;
 }
@@ -91,38 +144,30 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
     return 0;
   }
 
-  ngx_queue_t* q;
-  ray_actor_t* a;
-  int n;
+  ray_enqueue(self, from);
 
   int events = 0;
   lua_State* L = (lua_State*)self->u.data;
+
+  ngx_queue_t* q;
+  ray_actor_t* a;
 
   lua_settop(L, 0);
 
   self->flags |= RAY_MAIN_ACTIVE;
 
   do {
-    TRACE("MAIN LOOP TOP\n");
-
-    /* This is the main trampoline which drives scheduling the C actor
-      abstractions. The call to `recv' has suspend semantics. So suspending
-      the main thread until a send signal arrives is done by scheduling
-      actors it is waiting on, and giving the event loop a chance to run.
-
-      An atomic time slice is simply a call to the actor's `send' vtable
-      pointer. It is up to the actor's implementation to decide what to
-      do with that timeslice as it was requested by them in the first
-      place. Their state should have passed through the trampoline
-      unchanged.
-    */
-    ray_signal(self, 0);
+    TRACE("MAIN sending signal\n");
+    q = ngx_queue_head(queue);
+    a = ngx_queue_data(q, ray_actor_t, cond);
+    ray_send(a, a, 0);
 
     events = uv_run_once(loop);
 
     /* ray_is_active tests the actor's active state, not the main lua_State */
     if (ray_is_active(self)) {
       /* main has recieved a signal directly */
+      TRACE("main activated\n");
       break;
     }
   }
@@ -268,7 +313,9 @@ int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
   if (self->tid == from->tid) {
     /* same global state */
-    lua_xmove(from->L, self->L, narg);
+    if (from != self) {
+      lua_xmove(from->L, self->L, narg);
+    }
   }
   else {
     size_t len;
@@ -278,6 +325,7 @@ int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
     ray_codec_decode(self->L);
     lua_pop(from->L, narg);
   }
+
   ray_dequeue(self);
   return self->v.send(self, from, narg);
 }
