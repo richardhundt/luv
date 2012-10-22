@@ -32,8 +32,8 @@ static void _timer_cb(uv_timer_t* h, int status) {
   ray_notify(self, 1);
 }
 int rayM_timer_recv(ray_actor_t* self, ray_actor_t* that) {
-  //uv_timer_stop(&self->h.timer);
-  return ray_send(that, self, 1);
+  uv_timer_stop(&self->h.timer);
+  return 0;
 }
 int rayM_timer_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   if (lua_gettop(self->L)) {
@@ -81,9 +81,8 @@ static int timer_stop(lua_State* L) {
 
 static int timer_wait(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  ray_actor_t* curr = ray_get_self(L);
-  lua_settop(curr->L, 0);
-  return ray_recv(self, curr);
+  ray_actor_t* from = ray_get_self(L);
+  return ray_recv(from, self);
 }
 
 static int timer_free(lua_State *L) {

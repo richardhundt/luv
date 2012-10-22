@@ -173,9 +173,7 @@ static int fiber_send(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
   ray_actor_t* from = ray_get_self(L);
   if (!lua_gettop(self->L)) {
-    TRACE("send %p from %p\n", self, from);
-    int narg = lua_gettop(L) - 1;
-    lua_xmove(L, self->L, narg);
+    lua_xmove(L, self->L, lua_gettop(L) -1);
   }
   return ray_send(self, from, 0);
 }
@@ -183,9 +181,8 @@ static int fiber_recv(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
   ray_actor_t* from = ray_get_self(L);
 
-  TRACE("recv %p from %p\n", self, from);
   if (lua_gettop(self->L)) {
-    TRACE("short circuit\n");
+    /* recv from a full mailbox, return it */
     lua_settop(L, 0);
     int narg = lua_gettop(self->L);
     lua_xmove(self->L, L, narg);
@@ -198,6 +195,7 @@ static int fiber_free(lua_State* L) {
   if (!(self->flags & RAY_CLOSED)) {
     ray_send(self, self, 0);
   }
+  lua_settop(self->L, 0);
   ray_actor_free(self);
   return 1;
 }
