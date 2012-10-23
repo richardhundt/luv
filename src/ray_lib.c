@@ -154,5 +154,7 @@ void rayL_dump_stack(lua_State* L) {
   printf("-------------------------------------\n");
 }
 #else
-#define rayL_dump_stack(L) (void)(L)
+void rayL_dump_stack(lua_State* L) {
+  (void)L;
+}
 #endif /* RAY_DEBUG */

@@ -4,65 +4,62 @@
 #include "ray_thread.h"
 
 static const ray_vtable_t thread_v = {
-  recv : rayM_main_recv,
-  send : rayM_main_send,
+  recv  : rayM_main_recv,
+  send  : rayM_main_send,
   close : rayM_thread_close
 };
 
 static void _thread_enter(void* arg) {
   ray_actor_t* self = (ray_actor_t*)arg;
-  TRACE("ENTER: %p, L: %p, top: %i\n", self, self->L, lua_gettop(self->L));
+  lua_State* L = self->L;
+  rayL_dump_stack(L);
+  ray_codec_decode(L);
 
-  ray_codec_decode(self->L);
+  lua_remove(L, 1);
+  luaL_checktype(L, 1, LUA_TFUNCTION);
+  lua_pushcfunction(L, rayL_traceback);
+  lua_insert(L, 1);
+  int nargs = lua_gettop(L) - 2;
 
-  TRACE("DECODED: %p, top: %i\n", self, lua_gettop(self->L));
-
-  lua_remove(self->L, 1);
-  luaL_checktype(self->L, 1, LUA_TFUNCTION);
-  lua_pushcfunction(self->L, rayL_traceback);
-  lua_insert(self->L, 1);
-  int nargs = lua_gettop(self->L) - 2;
-
-  int rv = lua_pcall(self->L, nargs, LUA_MULTRET, 1);
-  lua_remove(self->L, 1); /* traceback */
+  int rv = lua_pcall(L, nargs, LUA_MULTRET, 1);
+  lua_remove(L, 1); /* traceback */
 
   if (rv) { /* error */
-    lua_pushboolean(self->L, 0);
-    lua_insert(self->L, 1);
-    luaL_error(self->L, lua_tostring(self->L, -1));
+    lua_pushboolean(L, 0);
+    lua_insert(L, 1);
+    luaL_error(L, lua_tostring(L, -1));
   }
   else {
-    lua_pushboolean(self->L, 1);
-    lua_insert(self->L, 1);
+    lua_pushboolean(L, 1);
+    lua_insert(L, 1);
   }
 
   self->flags |= RAY_CLOSED;
 }
 
+static void _async_cb(uv_async_t* handle, int status) {
+  (void)handle;
+  (void)status;
+}
 ray_actor_t* ray_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
 
-  ray_actor_t* self = lua_newuserdata(L, sizeof(ray_actor_t));
+  ray_actor_t* self = ray_actor_new(L, RAY_THREAD_T, &thread_v);
   lua_State*   L1   = luaL_newstate();
 
-  memset(self, 0, sizeof(ray_actor_t));
-
-  self->v = thread_v;
-  self->L = L1;
-
-  ngx_queue_init(&self->queue);
-  ngx_queue_init(&self->cond);
-
-  luaL_getmetatable(L, RAY_THREAD_T);
-  lua_setmetatable(L, -2);
-
   lua_insert(L, 1);
-
   luaL_openlibs(L1);
 
-  /* keep a reference for reverse lookup in child */
-  lua_pushlightuserdata(L1, (void*)self);
+  /* replace the coroutine with a new vm state */
+  if (self->ref != LUA_NOREF) {
+    luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
+    self->ref = LUA_NOREF;
+  }
+
+  self->L = L1;
+
+  lua_pushlightuserdata(L1, self);
   lua_setfield(L1, LUA_REGISTRYINDEX, RAY_MAIN);
 
   /* luaopen_ray(L1); */
@@ -84,23 +81,13 @@ ray_actor_t* ray_thread_new(lua_State* L) {
 }
 
 int rayM_thread_close(ray_actor_t* self) {
-  if (!ray_is_closed(self)) {
-    self->flags |= RAY_CLOSED;
-    uv_close(&self->h.handle, NULL);
-
-    uv_loop_t* loop = ray_get_loop(self->L);
-    uv_loop_delete(loop);
-
-    lua_pushnil(self->L);
-    lua_setfield(self->L, LUA_REGISTRYINDEX, RAY_MAIN);
-  }
+  ray_notify(self, LUA_MULTRET);
   return 1;
 }
 
 /* Lua API */
 static int thread_new(lua_State* L) {
   ray_actor_t* self = ray_thread_new(L);
-  TRACE("new thread: %p in %p", self, L);
   return 1;
 }
 
@@ -109,22 +96,10 @@ static int thread_join(lua_State* L) {
   ray_actor_t* from = ray_get_self(L);
 
   ray_recv(from, self);
-
   uv_thread_join(&self->tid);
 
-  lua_settop(from->L, 0);
-
-  size_t len;
-  int nret = lua_gettop(self->L);
-
-  ray_codec_encode(self->L, nret);
-  const char* data = lua_tolstring(self->L, -1, &len);
-  lua_pushlstring(from->L, data, len);
-  ray_codec_decode(from->L);
-
-  rayM_thread_close(self);
-
-  return nret;
+  ray_close(self);
+  return lua_gettop(L);
 }
 
 static int thread_free(lua_State* L) {

@@ -13,14 +13,15 @@ static const ray_vtable_t fiber_v = {
 int rayM_fiber_recv(ray_actor_t* self, ray_actor_t* from) {
   /* from could also be self, but never main */
   /* suspend and keep our stack */
-  lua_State* L = (lua_State*)self->u.data;
+  lua_State* L = self->L;
   TRACE("self %p recv from %p\n", self, from);
   self->flags &= ~RAY_FIBER_ACTIVE;
+  TRACE("CALLING LUA_YIELD\n");
   return lua_yield(L, lua_gettop(L));
 }
 
 int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
-  lua_State* L = (lua_State*)self->u.data;
+  lua_State* L = self->L;
 
   if (ray_is_closed(self)) {
     TRACE("IS CLOSED\n");
@@ -30,14 +31,14 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
 
   if (from != self) {
     TRACE("send not from system, enqueue...\n");
-    self->h.handle.data = from;
+    self->u.data = from;
     ray_enqueue(ray_get_main(L), self);
     return 0;
   }
   else {
     TRACE("RESUMING\n");
     rayL_dump_stack(self->L);
-    from = (ray_actor_t*)self->h.handle.data;
+    from = (ray_actor_t*)self->u.data;
     if (!from) from = ray_get_main(L);
   }
 
@@ -50,8 +51,6 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
   }
   else {
     narg = lua_gettop(self->L);
-    lua_settop(L, 0);
-    lua_xmove(self->L, L, narg);
   }
 
   self->flags |= RAY_FIBER_ACTIVE;
@@ -63,14 +62,9 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
     case LUA_YIELD: {
       TRACE("seen LUA_YIELD, active? %i\n", ray_is_active(self));
       if (self->flags & RAY_FIBER_ACTIVE) {
-        /* uses coroutine.yield to reply to sender */
+        /* detected coroutine.yield back in queue */
         self->flags &= ~RAY_FIBER_ACTIVE;
         ray_enqueue(ray_get_main(L), self);
-
-        narg = lua_gettop(L);
-        lua_xmove(L, self->L, narg);
-
-        ray_signal(self, narg);
       }
       break;
     }
@@ -78,8 +72,6 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
       /* normal exit, notify waiters, and close */
       TRACE("normal exit, notify waiting...\n");
       rayL_dump_stack(L);
-      narg = lua_gettop(L);
-      lua_xmove(L, self->L, narg);
       ray_push(self, narg);
       if (ray_notify(self, narg)) {
         TRACE("notified ok\n");
@@ -104,7 +96,7 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
 int rayM_fiber_close(ray_actor_t* self) {
   TRACE("closing %p\n", self);
 
-  lua_State* L = (lua_State*)self->u.data;
+  lua_State* L = self->L;
 
   /* clear our reverse mapping to allow __gc */
   lua_pushthread(L);
@@ -118,9 +110,7 @@ ray_actor_t* ray_fiber_new(lua_State* L) {
   int top = lua_gettop(L);
   ray_actor_t* self = ray_actor_new(L, RAY_FIBER_T, &fiber_v);
 
-  lua_State* L2 = lua_newthread(L);
-  self->u.data  = L2;
-  lua_pop(L, 1);
+  lua_State* L2 = self->L;
 
   /* reverse mapping from L2 to self */
   lua_pushthread(L2);
@@ -137,7 +127,7 @@ static int fiber_new(lua_State* L) {
   luaL_checktype(L, 1, LUA_TFUNCTION);
   int narg = lua_gettop(L);
   ray_actor_t* self = ray_fiber_new(L);
-  lua_State*   L2   = (lua_State*)self->u.data;
+  lua_State*   L2   = self->L;
 
   /* return self to caller */
   lua_insert(L, 1);
@@ -147,17 +137,7 @@ static int fiber_new(lua_State* L) {
   lua_xmove(L, L2, narg);
 
   assert(lua_gettop(L) == 1);
-
-  /* place self as first argument */
-  lua_pushvalue(L, 1);
-  lua_xmove(L, L2, 1);
-  lua_insert(L2, 1);
-  lua_pushvalue(L2, 2);
-  lua_insert(L2, 1);
-  lua_remove(L2, 3);
-
   ray_enqueue(ray_get_main(L), self);
-
   return 1;
 }
 
@@ -169,25 +149,17 @@ static int fiber_spawn(lua_State* L) {
   return 1;
 }
 
-static int fiber_send(lua_State* L) {
-  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
-  ray_actor_t* from = ray_get_self(L);
-  if (!lua_gettop(self->L)) {
-    lua_xmove(L, self->L, lua_gettop(L) -1);
-  }
-  return ray_send(self, from, 0);
-}
-static int fiber_recv(lua_State* L) {
+static int fiber_join(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
   ray_actor_t* from = ray_get_self(L);
 
-  if (lua_gettop(self->L)) {
-    /* recv from a full mailbox, return it */
+  if (ray_is_closed(self)) {
     lua_settop(L, 0);
     int narg = lua_gettop(self->L);
     lua_xmove(self->L, L, narg);
     return narg;
   }
+
   return ray_recv(from, self);
 }
 static int fiber_free(lua_State* L) {
@@ -212,8 +184,7 @@ static luaL_Reg fiber_funcs[] = {
 };
 
 static luaL_Reg fiber_meths[] = {
-  {"send",      fiber_send},
-  {"recv",      fiber_recv},
+  {"join",      fiber_join},
   {"__gc",      fiber_free},
   {"__tostring",fiber_tostring},
   {NULL,        NULL}

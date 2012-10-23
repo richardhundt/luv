@@ -109,6 +109,7 @@ ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   /* and knows its thread boundary */
   self->tid   = (uv_thread_t)uv_thread_self();
   self->flags = 0;
+
   assert(lua_gettop(L) == top + 1);
   return self;
 }
@@ -119,12 +120,11 @@ static const ray_vtable_t ray_main_v = {
 };
 
 int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg) {
-  TRACE("%p sending to main, narg: %i...\n", from, narg);
-  lua_State* L = (lua_State*)self->u.data;
+  TRACE("%p sending to main %p, narg: %i...\n", from, self, narg);
   if (ngx_queue_empty(&self->queue)) {
+    TRACE("NEEDS ASYNC\n");
     uv_async_send(&self->h.async);
   }
-  lua_xmove(self->L, L, narg);
   return 0;
 }
 
@@ -136,6 +136,7 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
 
   if (self->flags & RAY_MAIN_ACTIVE) {
     /* flatten recursion, we have a queue */
+    TRACE("MAIN ENQUEUE AND RETURN...\n");
     int interrupt = ngx_queue_empty(queue);
     ray_enqueue(self, from);
     if (interrupt) {
@@ -147,7 +148,7 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   ray_enqueue(self, from);
 
   int events = 0;
-  lua_State* L = (lua_State*)self->u.data;
+  lua_State* L = self->L;
 
   ngx_queue_t* q;
   ray_actor_t* a;
@@ -157,17 +158,16 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   self->flags |= RAY_MAIN_ACTIVE;
 
   do {
-    TRACE("MAIN sending signal\n");
     while (!ngx_queue_empty(queue)) {
+      TRACE("MAIN sending signal\n");
       q = ngx_queue_head(queue);
       a = ngx_queue_data(q, ray_actor_t, cond);
       ray_send(a, a, 0);
-      if (a == from) break;
+      //if (a == from) break;
     }
 
     events = uv_run_once(loop);
 
-    /* ray_is_active tests the actor's active state, not the main lua_State */
     if (ray_is_active(self)) {
       /* main has recieved a signal directly */
       TRACE("main activated\n");
@@ -180,7 +180,7 @@ int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
   self->flags &= ~RAY_MAIN_ACTIVE;
 
   if (!ray_is_active(self)) {
-    return luaL_error(L, "FATAL: deadlock detected");
+    //return luaL_error(L, "FATAL: deadlock detected in %p", self);
   }
 
   TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
@@ -205,7 +205,7 @@ int ray_init_main(lua_State* L) {
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
 
-    self->u.data = L;
+    self->L = L;
 
     assert(lua_pushthread(L)); /* must be main thread */
 
@@ -219,7 +219,6 @@ int ray_init_main(lua_State* L) {
     uv_async_init(ray_get_loop(L), &self->h.async, _async_cb);
     uv_unref(&self->h.handle);
 
-    lua_settop(self->L, 0);
     lua_pop(L, 1);
   }
   lua_pop(L, 1);
@@ -277,19 +276,19 @@ int ray_notify(ray_actor_t* self, int narg) {
 
 /* wake one waiting actor */
 int ray_signal(ray_actor_t* self, int narg) {
-  int count = 0;
+  int seen = 0;
   ngx_queue_t* q;
   ray_actor_t* s;
   if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
   if (!ngx_queue_empty(&self->queue)) {
     q = ngx_queue_head(&self->queue);
     s = ngx_queue_data(q, ray_actor_t, cond);
-    ray_push(self, narg);
+    if (narg) ray_push(self, narg);
     ray_send(s, self, narg);
-    count++;
+    seen++;
   }
-  if (narg) lua_pop(self->L, narg);
-  return count;
+  if (narg && seen) lua_pop(self->L, narg);
+  return seen;
 }
 
 int ray_actor_free(ray_actor_t* self) {
@@ -321,12 +320,15 @@ int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
     }
   }
   else {
-    size_t len;
-    ray_codec_encode(from->L, narg);
-    const char* data = lua_tolstring(from->L, -1, &len);
-    lua_pushlstring(self->L, data, len);
-    ray_codec_decode(self->L);
-    lua_pop(from->L, narg);
+    TRACE("send between threads\n");
+    if (narg) {
+      size_t len;
+      ray_codec_encode(from->L, narg);
+      const char* data = lua_tolstring(from->L, -1, &len);
+      lua_pushlstring(self->L, data, len);
+      ray_codec_decode(self->L);
+      lua_pop(from->L, narg);
+    }
   }
 
   ray_dequeue(self);
