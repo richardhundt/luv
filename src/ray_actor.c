@@ -149,7 +149,6 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
       /* got a data payload for main lua_State */
       TRACE("%p GOT DATA from %p\n", self, from);
       assert(info >= RAY_SEND);
-      ray_xcopy(from, self, info);
       self->flags |= RAY_ACTIVE;
       uv_async_send(&self->h.async);
     }
@@ -266,9 +265,16 @@ int ray_actor_free(ray_actor_t* self) {
   return 1;
 }
 
-/* send `self' a message, moving nargs from `from's stack  */
+/* send `self' a message */
 int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
   TRACE("from: %p, to %p, info: %i\n", from, self, info);
+  if (info >= RAY_SEND) {
+    if (from->tid == self->tid) {
+      int narg = info;
+      if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
+      ray_xcopy(from, self, narg);
+    }
+  }
   return self->v.send(self, from, info);
 }
 

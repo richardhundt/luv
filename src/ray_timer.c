@@ -46,20 +46,21 @@ int rayM_timer_send(ray_actor_t* self, ray_actor_t* from, int info) {
       uv_timer_again(&self->h.timer);
       break;
     }
-    case RAY_TIMER_START: {
-      int64_t timeout = luaL_optlong(self->L, 1, 0L);
-      int64_t repeat  = luaL_optlong(self->L, 2, 0L);
-      TRACE("RAY_TIMER_START: timeout %i, repeat %i\n", timeout, repeat);
-      uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
-      break;
-    }
     case RAY_TIMER_CLOSE: {
       uv_close(&self->h.handle, NULL);
       break;
     }
     default: {
-      ray_send(self, from, RAY_TIMER_STOP);
-      return info;
+      if (info > 0) {
+        int64_t timeout = luaL_optlong(self->L, 1, 0L);
+        int64_t repeat  = luaL_optlong(self->L, 2, 0L);
+        TRACE("RAY_TIMER_START: timeout %i, repeat %i\n", timeout, repeat);
+        uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
+      }
+      else {
+        ray_send(self, from, RAY_TIMER_STOP);
+        return info;
+      }
     }
   }
 
@@ -79,9 +80,7 @@ static int timer_new(lua_State* L) {
 
 static int timer_start(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  ray_actor_t* from = ray_current(L);
-  ray_xcopy(from, self, lua_gettop(from->L) - 1);
-  ray_send(self, from, RAY_TIMER_START);
+  ray_send(self, ray_current(L), 2);
   return 1;
 }
 

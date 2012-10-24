@@ -78,9 +78,6 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int info) {
       TRACE("RAY_SEND from: %p, to %p, info: %i\n", from, self, info);
       /* somebody handed me data */
       assert(info >= RAY_SEND);
-      rayL_dump_stack(from->L);
-      lua_settop(self->L, 0);
-      ray_xcopy(from, self, info);
       return lua_gettop(self->L);
     }
   }
