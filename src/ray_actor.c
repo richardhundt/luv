@@ -266,7 +266,6 @@ int ray_actor_free(ray_actor_t* self) {
 /* send `self' a message, moving nargs from `from's stack  */
 int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
   TRACE("from: %p, to %p, info: %i\n", from, self, info);
-  rayL_dump_stack(self->L);
   assert(self->tid == from->tid);
   if (info >= LUA_MULTRET) {
     if (from != self) {
@@ -281,6 +280,7 @@ int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
     }
   }
 
+  rayL_dump_stack(self->L);
   return self->v.send(self, from, info);
 }
 

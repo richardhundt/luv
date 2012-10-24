@@ -76,8 +76,14 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int info) {
     }
     default: {
       TRACE("RAY_SEND from: %p, to %p\n", from, self);
-      /* somebody handed me data, output it to Lua space */
-      return lua_gettop(self->L);
+      /* somebody handed me data */
+      if (self->flags & RAY_ACTIVE) {
+        return lua_gettop(self->L);
+      }
+      else {
+        TRACE("NEED A WAKEUP\n");
+        ray_send(self, from, RAY_READY);
+      }
     }
   }
   return 0;
@@ -165,7 +171,7 @@ static int fiber_join(lua_State* L) {
 static int fiber_free(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   if (!(self->flags & RAY_CLOSED)) {
-    ray_send(self, self, 0);
+    ray_notify(self, LUA_MULTRET);
   }
   lua_settop(self->L, 0);
   ray_actor_free(self);
