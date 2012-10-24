@@ -11,7 +11,7 @@ int rayM_timer_close (ray_actor_t* self);
 #define RAY_TIMER_AGAIN RAY_TIMER_STOP  - 1
 #define RAY_TIMER_START RAY_TIMER_AGAIN - 1
 #define RAY_TIMER_CLOSE RAY_TIMER_START - 1
-#define RAY_TIMER_WAIT  RAY_TIMER_WAIT  - 1
+#define RAY_TIMER_WAIT  RAY_TIMER_CLOSE - 1
 
 LUALIB_API int luaopen_ray_timer(lua_State* L);
 

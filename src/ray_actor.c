@@ -99,11 +99,11 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
       break;
     }
     case RAY_YIELD: {
-      uv_loop_t*   loop  = self->h.handle.loop;
       ngx_queue_t* queue = &self->queue;
 
       int events = 0;
       lua_State* L = self->L;
+      uv_loop_t* loop = ray_get_loop(L);
 
       ngx_queue_t* q;
       ray_actor_t* a;
@@ -121,7 +121,9 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
           ray_send(a, self, RAY_EVAL);
         }
 
+        TRACE("RUN EVENT LOOP...\n");
         events = uv_run_once(loop);
+        TRACE("EVENTS: %i\n", events);
 
         if (ray_is_active(self)) {
           /* main has recieved a signal directly */
@@ -147,7 +149,6 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
       /* got a data payload for main lua_State */
       TRACE("%p GOT DATA from %p\n", self, from);
       assert(info >= RAY_SEND);
-      ray_dequeue(from);
       ray_xcopy(from, self, info);
       self->flags |= RAY_ACTIVE;
       uv_async_send(&self->h.async);
