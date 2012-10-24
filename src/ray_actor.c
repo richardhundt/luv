@@ -4,56 +4,26 @@
 #include "ray_codec.h"
 
 /*
-  The Ray actor system is a C abstraction which functions by synchronous
+  The Ray actor system is a C abstraction which functions exclusively by
   message passing between `ray_actor_t' instances. Each actor has a mailbox
-  which is conceptually unbuffered, i.e. it can contain at most one logical
-  message. However, the mailbox is a plain lua_State* pointer and a message
-  is a Lua tuple, and so may be of any size.
+  which is a plain lua_State* and can therefore hold any arbitrary stack of
+  Lua values.
 
-  Each actor also has a signal queue of actors waiting on notifications
-  from it. While each actor may have many actors waiting on it, an actor
-  can only be waiting on one other actor (which may be itself).
+  Messages are passed by calling `ray_send' which currently looks like this:
 
-  Messages are sent by calling `ray_send`, and awaited by calling `ray_recv`,
-  which have the following semantics:
+  ```
+  int ray_send(ray_actor_t* self, ray_actor_t* from, int mesg)
+  ```
 
-  * `ray_send' copies messages to the receiving actor's mailbox and calls
-    its `send' hook to notify it that it has mail.
+  The `mesg' parameter is a C-level message if < 0, otherwise assumed to
+  be the number of items to move from the sender to the receiver's mailbox.
 
-  * `ray_recv' puts the receiving actor in the target actor's notification
-    queue, and calls the receiving actor's `recv' hook.
+  You can invent your own protocols in "user space" by pushing first a messsage
+  type onto the receiver's stack and then the data, or you can extend the
+  control messages negatively by doing something like this:
 
-  Although messages are delivered synchronously, an actor may choose to
-  react asynchronously. This means that the actor needs to have a way to
-  `yield' to allow other actors of which it knows nothing, to run, while
-  ensuring that it is given a timeslice back at a later time.
-
-  To make this work, we have a "main" actor which acts as a trampoline.
-
-  Asynchronous reaction then has the following pattern:
-
-  if from == main then
-    -- resume
-  else
-    main:wait(self)
-    -- yield
-  end
-
-  That is: to `yield' to other actors, the `main' actor is told to wait for
-  us. The `main' actor's waiting behaviour is then to simply signal back to
-  actors in its signal queue, until the queue is exhausted, or it has been
-  sent a message directly, to pass back to the main Lua state.
-
-  The point of all this is to decouple the actor system from the Lua VM, to
-  allow graphs of C level actors to communicate without entering the Lua VM.
-
-  This makes it possible, for instance, to place an HTTP "filters" around
-  a TCP stream and a fiber reading from the filter is only resumed once the
-  HTTP filter has parsed and constructed a full HTTP message.
-
-  So in general you can build any kind of C level sources, filters and sinks
-  and only wire up the end points into Lua at the Lua-C boundary (i.e. the
-  userdata interface presented to Lua by its metatable).
+  #define MY_MESG1 RAY_USER
+  #define MY_MESG2 MY_MESG1 - 1
 
 */
 
@@ -101,7 +71,7 @@ ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
   /* with a copy of `self' on its stack */
-  /*
+  /* or not...
   lua_pushvalue(L, -1);
   lua_xmove(L, self->L, 1);
   */
@@ -115,77 +85,74 @@ ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
 }
 
 static const ray_vtable_t ray_main_v = {
-  recv : rayM_main_recv,
   send : rayM_main_send
 };
 
-int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg) {
-  TRACE("%p sending to main %p, narg: %i...\n", from, self, narg);
-  if (ngx_queue_empty(&self->queue)) {
-    TRACE("NEEDS ASYNC\n");
-    uv_async_send(&self->h.async);
-  }
-  return 0;
-}
-
-int rayM_main_recv(ray_actor_t* self, ray_actor_t* from) {
-  TRACE("ENTER MAIN AWAIT, queue empty? %i\n", ngx_queue_empty(&self->queue));
-
-  uv_loop_t*   loop  = self->h.handle.loop;
-  ngx_queue_t* queue = &self->queue;
-
-  if (self->flags & RAY_MAIN_ACTIVE) {
-    /* flatten recursion, we have a queue */
-    TRACE("MAIN ENQUEUE AND RETURN...\n");
-    int interrupt = ngx_queue_empty(queue);
-    ray_enqueue(self, from);
-    if (interrupt) {
-      uv_async_send(&self->h.async);
-    }
-    return 0;
-  }
-
-  ray_enqueue(self, from);
-
-  int events = 0;
-  lua_State* L = self->L;
-
-  ngx_queue_t* q;
-  ray_actor_t* a;
-
-  lua_settop(L, 0);
-
-  self->flags |= RAY_MAIN_ACTIVE;
-
-  do {
-    while (!ngx_queue_empty(queue)) {
-      TRACE("MAIN sending signal\n");
-      q = ngx_queue_head(queue);
-      a = ngx_queue_data(q, ray_actor_t, cond);
-      ray_send(a, a, 0);
-      //if (a == from) break;
-    }
-
-    events = uv_run_once(loop);
-
-    if (ray_is_active(self)) {
-      /* main has recieved a signal directly */
-      TRACE("main activated\n");
+int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
+  switch (info) {
+    case RAY_ASYNC: {
+      TRACE("RAY_ASYNC self: %p, from: %p\n", self, from);
+      if (ngx_queue_empty(&self->queue)) {
+        uv_async_send(&self->h.async);
+      }
+      ray_enqueue(self, from);
       break;
     }
+    case RAY_YIELD: {
+      uv_loop_t*   loop  = self->h.handle.loop;
+      ngx_queue_t* queue = &self->queue;
+
+      int events = 0;
+      lua_State* L = self->L;
+
+      ngx_queue_t* q;
+      ray_actor_t* a;
+
+      lua_settop(L, 0);
+
+      self->flags &= ~RAY_ACTIVE;
+
+      do {
+        while (!ngx_queue_empty(queue)) {
+          q = ngx_queue_head(queue);
+          a = ngx_queue_data(q, ray_actor_t, cond);
+          ray_dequeue(a);
+          TRACE("main %p sending RAY_EVAL to %p\n", self, a);
+          ray_send(a, self, RAY_EVAL);
+        }
+
+        events = uv_run_once(loop);
+
+        if (ray_is_active(self)) {
+          /* main has recieved a signal directly */
+          TRACE("main activated\n");
+          break;
+        }
+      }
+      while (events || !ngx_queue_empty(queue));
+
+      self->flags |= RAY_ACTIVE;
+
+      TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
+      rayL_dump_stack(L);
+      return lua_gettop(L);
+    }
+    case RAY_READY: {
+      TRACE("RAY_READY\n");
+      self->flags |= RAY_ACTIVE;
+      uv_async_send(&self->h.async);
+      break;
+    }
+    default: {
+      /* got a data payload for main lua_State */
+      TRACE("%p GOT DATA from %p\n", self, from);
+      ray_dequeue(from);
+      assert(info >= RAY_SEND);
+      self->flags |= RAY_ACTIVE;
+      uv_async_send(&self->h.async);
+    }
   }
-  while (events || !ngx_queue_empty(queue));
-
-  /* main lua_State* not pretending to be running */
-  self->flags &= ~RAY_MAIN_ACTIVE;
-
-  if (!ray_is_active(self)) {
-    //return luaL_error(L, "FATAL: deadlock detected in %p", self);
-  }
-
-  TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
-  rayL_dump_stack(L);
-  return lua_gettop(L);
+  return 0;
 }
 
 static void _async_cb(uv_async_t* handle, int status) {
@@ -257,37 +224,32 @@ int ray_push(ray_actor_t* self, int narg) {
   return narg;
 }
 
-/* broadcast to all waiting actors */
-int ray_notify(ray_actor_t* self, int narg) {
+int ray_notify(ray_actor_t* self, int info) {
   int count = 0;
   ngx_queue_t* q;
-  ray_actor_t* s;
-  if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
+  ray_actor_t* a;
   while (!ngx_queue_empty(&self->queue)) {
     q = ngx_queue_head(&self->queue);
-    s = ngx_queue_data(q, ray_actor_t, cond);
-    ray_push(self, narg);
-    ray_send(s, self, narg);
+    a = ngx_queue_data(q, ray_actor_t, cond);
+    ray_dequeue(a);
+    ray_send(a, self, info);
     count++;
   }
-  if (narg) lua_pop(self->L, narg);
   return count;
 }
 
 /* wake one waiting actor */
-int ray_signal(ray_actor_t* self, int narg) {
+int ray_signal(ray_actor_t* self, int info) {
   int seen = 0;
   ngx_queue_t* q;
-  ray_actor_t* s;
-  if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
+  ray_actor_t* a;
   if (!ngx_queue_empty(&self->queue)) {
     q = ngx_queue_head(&self->queue);
-    s = ngx_queue_data(q, ray_actor_t, cond);
-    if (narg) ray_push(self, narg);
-    ray_send(s, self, narg);
+    a = ngx_queue_data(q, ray_actor_t, cond);
+    ray_dequeue(a);
+    ray_send(a, self, info);
     seen++;
   }
-  if (narg && seen) lua_pop(self->L, narg);
   return seen;
 }
 
@@ -301,45 +263,27 @@ int ray_actor_free(ray_actor_t* self) {
   return 1;
 }
 
-void ray_schedule(ray_actor_t* that) {
-  ray_actor_t* boss = ray_get_main(that->L);
-  int interrupt = ngx_queue_empty(&boss->queue);
-  ray_enqueue(boss, that);
-  if (interrupt) {
-    uv_async_send(&boss->h.async);
-  }
-}
-
 /* send `self' a message, moving nargs from `from's stack  */
-int ray_send(ray_actor_t* self, ray_actor_t* from, int narg) {
-  if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
-  if (self->tid == from->tid) {
-    /* same global state */
+int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
+  TRACE("from: %p, to %p, info: %i\n", from, self, info);
+  rayL_dump_stack(self->L);
+  assert(self->tid == from->tid);
+  if (info >= LUA_MULTRET) {
     if (from != self) {
+      int narg;
+      if (info == LUA_MULTRET) {
+        narg = lua_gettop(from->L);
+      }
+      else {
+        narg = info;
+      }
       lua_xmove(from->L, self->L, narg);
     }
   }
-  else {
-    TRACE("send between threads\n");
-    if (narg) {
-      size_t len;
-      ray_codec_encode(from->L, narg);
-      const char* data = lua_tolstring(from->L, -1, &len);
-      lua_pushlstring(self->L, data, len);
-      ray_codec_decode(self->L);
-      lua_pop(from->L, narg);
-    }
-  }
 
-  ray_dequeue(self);
-  return self->v.send(self, from, narg);
+  return self->v.send(self, from, info);
 }
 
-/* wait for a message from `from' */
-int ray_recv(ray_actor_t* self, ray_actor_t* from) {
-  ray_enqueue(from, self);
-  return self->v.recv(self, from);
-}
 /* terminate a state */
 int ray_close(ray_actor_t* self) {
   self->flags |= RAY_CLOSED;

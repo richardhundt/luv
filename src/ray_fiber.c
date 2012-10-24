@@ -5,92 +5,82 @@
 #include "ray_fiber.h"
 
 static const ray_vtable_t fiber_v = {
-  recv  : rayM_fiber_recv,
   send  : rayM_fiber_send,
   close : rayM_fiber_close
 };
 
-int rayM_fiber_recv(ray_actor_t* self, ray_actor_t* from) {
-  /* from could also be self, but never main */
-  /* suspend and keep our stack */
+int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int info) {
   lua_State* L = self->L;
-  TRACE("self %p recv from %p\n", self, from);
-  self->flags &= ~RAY_FIBER_ACTIVE;
-  TRACE("CALLING LUA_YIELD\n");
-  return lua_yield(L, lua_gettop(L));
-}
-
-int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int narg) {
-  lua_State* L = self->L;
-
-  if (ray_is_closed(self)) {
-    TRACE("IS CLOSED\n");
-    ray_notify(self, LUA_MULTRET);
-    return narg;
-  }
-
-  if (from != self) {
-    TRACE("send not from system, enqueue...\n");
-    self->u.data = from;
-    ray_enqueue(ray_get_main(L), self);
-    return 0;
-  }
-  else {
-    TRACE("RESUMING\n");
-    rayL_dump_stack(self->L);
-    from = (ray_actor_t*)self->u.data;
-    if (!from) from = ray_get_main(L);
-  }
-
-  TRACE("send %p from %p\n", self, from);
-
-  if (!(self->flags & RAY_FIBER_START)) {
-    self->flags |= RAY_FIBER_START;
-    TRACE("first entry\n");
-    narg = lua_gettop(L) - 1;
-  }
-  else {
-    narg = lua_gettop(self->L);
-  }
-
-  self->flags |= RAY_FIBER_ACTIVE;
-  TRACE("ENTER VM\n");
-  int rc = lua_resume(L, narg);
-  TRACE("LEAVE VM\n");
-
-  switch (rc) {
-    case LUA_YIELD: {
-      TRACE("seen LUA_YIELD, active? %i\n", ray_is_active(self));
-      if (self->flags & RAY_FIBER_ACTIVE) {
-        /* detected coroutine.yield back in queue */
-        self->flags &= ~RAY_FIBER_ACTIVE;
-        ray_enqueue(ray_get_main(L), self);
-      }
-      break;
+  switch (info) {
+    case RAY_YIELD: {
+      TRACE("RAY_YIELD\n");
+      self->flags &= ~RAY_ACTIVE;
+      return lua_yield(L, lua_gettop(L));
     }
-    case 0: {
-      /* normal exit, notify waiters, and close */
-      TRACE("normal exit, notify waiting...\n");
+    case RAY_READY: {
+      TRACE("RAY_READY\n");
+      self->flags |= RAY_ACTIVE;
+      lua_pushlightuserdata(self->L, from);
+      TRACE("sending RAY_ASYNC to main\n");
+      return ray_send(ray_get_main(L), self, RAY_ASYNC);
+    }
+    case RAY_EVAL: {
+      TRACE("RAY_EVAL\n");
       rayL_dump_stack(L);
-      ray_push(self, narg);
-      if (ray_notify(self, narg)) {
-        TRACE("notified ok\n");
-        lua_pop(self->L, narg);
+
+      int narg;
+      if (!(self->flags & RAY_FIBER_START)) {
+        self->flags |= RAY_FIBER_START;
+        TRACE("first entry\n");
+        narg = lua_gettop(L) - 1;
       }
       else {
-        TRACE("no waiters, keep stack\n");
+        /* saved from RAY_READY call */
+        from = lua_touserdata(L, -1);
+        lua_pop(L, -1);
+        narg = lua_gettop(L);
       }
-      ray_close(self);
-      break;
+
+      self->flags |= RAY_ACTIVE;
+      TRACE("ENTER VM\n");
+      int rc = lua_resume(L, narg);
+      TRACE("LEAVE VM\n");
+
+      switch (rc) {
+        case LUA_YIELD: {
+          TRACE("seen LUA_YIELD, active? %i\n", ray_is_active(self));
+          if (self->flags & RAY_ACTIVE) {
+            /* detected coroutine.yield back in queue */
+            self->flags &= ~RAY_ACTIVE;
+            ray_send(self, from, RAY_READY);
+          }
+          break;
+        }
+        case 0: {
+          /* normal exit, notify waiters, and close */
+          TRACE("normal exit, notify waiting...\n");
+          narg = lua_gettop(L);
+          ray_send(from, self, narg);
+          ray_close(self);
+          break;
+        }
+        default: {
+          TRACE("ERROR: in fiber\n");
+          /* propagate the error back to the caller */
+          ray_send(from, self, 1);
+          ray_close(self);
+          lua_error(from->L);
+        }
+      }
+      return narg;
     }
-    default:
-      TRACE("ERROR: in fiber\n");
-      /* propagate the error back to the caller */
-      ray_send(from, self, 1);
-      ray_close(self);
-      lua_error(from->L);
+    default: {
+      TRACE("RAY_SEND from: %p, to %p\n", from, self);
+      /* somebody handed me data, output it to Lua space */
+      return lua_gettop(self->L);
+    }
   }
-  return rc;
+  return 0;
 }
 
 int rayM_fiber_close(ray_actor_t* self) {
@@ -137,15 +127,21 @@ static int fiber_new(lua_State* L) {
   lua_xmove(L, L2, narg);
 
   assert(lua_gettop(L) == 1);
-  ray_enqueue(ray_get_main(L), self);
+  return 1;
+}
+
+static int fiber_ready(lua_State* L) {
+  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
+  ray_actor_t* curr = ray_get_self(L);
+  ray_send(self, curr, RAY_READY);
   return 1;
 }
 
 static int fiber_spawn(lua_State* L) {
   fiber_new(L);
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* from = ray_get_self(L);
-  ray_send(self, from, LUA_MULTRET);
+  ray_actor_t* curr = ray_get_self(L);
+  ray_send(self, curr, RAY_READY);
   return 1;
 }
 
@@ -154,14 +150,18 @@ static int fiber_join(lua_State* L) {
   ray_actor_t* from = ray_get_self(L);
 
   if (ray_is_closed(self)) {
-    lua_settop(L, 0);
     int narg = lua_gettop(self->L);
-    lua_xmove(self->L, L, narg);
+    ray_send(from, self, narg);
     return narg;
   }
 
-  return ray_recv(from, self);
+  /* we're ready for a timeslice */
+  ray_send(self, from, RAY_READY);
+
+  /* tell the current thread to wait for us */
+  return ray_send(from, self, RAY_YIELD);
 }
+
 static int fiber_free(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   if (!(self->flags & RAY_CLOSED)) {
@@ -185,6 +185,7 @@ static luaL_Reg fiber_funcs[] = {
 
 static luaL_Reg fiber_meths[] = {
   {"join",      fiber_join},
+  {"ready",     fiber_ready},
   {"__gc",      fiber_free},
   {"__tostring",fiber_tostring},
   {NULL,        NULL}

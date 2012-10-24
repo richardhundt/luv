@@ -87,7 +87,6 @@ typedef union ray_req_u {
 #define RAY_ZMQ_CTX_T     "ray.zmq.Context"
 #define RAY_ZMQ_SOCKET_T  "ray.zmq.Socket"
 
-
 #define container_of(ptr, type, member) \
   ((type*) ((char*)(ptr) - offsetof(type, member)))
 
