@@ -247,14 +247,14 @@ static int stream_stop(lua_State* L) {
 
 static int stream_read(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   int len = luaL_optinteger(L, 2, RAY_BUF_SIZE);
   return ray_stream_read(self, curr, len);
 }
 
 static int stream_write(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
 
   size_t len;
   const char* data = luaL_checklstring(L, 2, &len);
@@ -266,7 +266,7 @@ static int stream_write(lua_State* L) {
 static int stream_listen(lua_State* L) {
   luaL_checktype(L, 1, LUA_TUSERDATA);
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   int backlog = luaL_optinteger(L, 2, 128);
   return ray_stream_listen(self, curr, backlog);
 }
@@ -275,32 +275,32 @@ static int stream_accept(lua_State *L) {
   luaL_checktype(L, 1, LUA_TUSERDATA);
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   ray_actor_t* conn = (ray_actor_t*)lua_touserdata(L, 2);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   TRACE("HERE\n");
   return ray_stream_accept(self, curr, conn);
 }
 
 static int stream_shutdown(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   return ray_stream_shutdown(self, curr);
 }
 
 static int stream_readable(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   return ray_stream_readable(self, curr);
 }
 
 static int stream_writable(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   return ray_stream_writable(self, curr);
 }
 
 static int stream_close(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   return ray_stream_close(self, curr);
 }
 

@@ -41,7 +41,7 @@ static void _getaddrinfo_cb(uv_getaddrinfo_t* req, int s, struct addrinfo* ai) {
 }
 
 static int net_getaddrinfo(lua_State* L) {
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   uv_loop_t*   loop = ray_get_loop(L);
   uv_getaddrinfo_t* req = &curr->r.getaddrinfo;
 
@@ -139,7 +139,7 @@ static int tcp_bind(lua_State* L) {
 
 static int tcp_connect(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TCP_T);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
 
   struct sockaddr_in addr;
   const char* host;
@@ -316,7 +316,7 @@ static void _send_cb(uv_udp_send_t* req, int status) {
 
 static int udp_send(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
 
   curr->r.req.data = self;
 
@@ -368,7 +368,7 @@ static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct socka
 static int udp_recv(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_UDP_T);
   uv_udp_recv_start(&self->h.udp, ray_alloc_cb, _recv_cb);
-  return ray_recv(ray_get_self(L), self);
+  return ray_recv(ray_current(L), self);
 }
 
 static const char* RAY_UDP_MEMBERSHIP_OPTS[] = { "join", "leave", NULL };

@@ -72,7 +72,7 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg);
 int ray_init_main(lua_State* L);
 
 uv_loop_t*   ray_get_loop(lua_State* L);
-ray_actor_t* ray_get_self(lua_State* L);
+ray_actor_t* ray_current(lua_State* L);
 ray_actor_t* ray_get_main(lua_State* L);
 
 ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);

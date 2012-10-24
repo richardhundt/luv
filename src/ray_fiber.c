@@ -75,15 +75,13 @@ int rayM_fiber_send(ray_actor_t* self, ray_actor_t* from, int info) {
       return narg;
     }
     default: {
-      TRACE("RAY_SEND from: %p, to %p\n", from, self);
+      TRACE("RAY_SEND from: %p, to %p, info: %i\n", from, self, info);
       /* somebody handed me data */
-      if (self->flags & RAY_ACTIVE) {
-        return lua_gettop(self->L);
-      }
-      else {
-        TRACE("NEED A WAKEUP\n");
-        ray_send(self, from, RAY_READY);
-      }
+      assert(info >= RAY_SEND);
+      rayL_dump_stack(from->L);
+      lua_settop(self->L, 0);
+      ray_xcopy(from, self, info);
+      return lua_gettop(self->L);
     }
   }
   return 0;
@@ -113,7 +111,7 @@ ray_actor_t* ray_fiber_new(lua_State* L) {
   lua_pushlightuserdata(L2, self);
   lua_rawset(L2, LUA_REGISTRYINDEX);
 
-  assert(ray_get_self(L2) == self);
+  assert(ray_current(L2) == self);
   assert(lua_gettop(L) == top + 1);
   return self;
 }
@@ -138,7 +136,7 @@ static int fiber_new(lua_State* L) {
 
 static int fiber_ready(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   ray_send(self, curr, RAY_READY);
   return 1;
 }
@@ -146,14 +144,14 @@ static int fiber_ready(lua_State* L) {
 static int fiber_spawn(lua_State* L) {
   fiber_new(L);
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr = ray_get_self(L);
+  ray_actor_t* curr = ray_current(L);
   ray_send(self, curr, RAY_READY);
   return 1;
 }
 
 static int fiber_join(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_FIBER_T);
-  ray_actor_t* from = ray_get_self(L);
+  ray_actor_t* from = ray_current(L);
 
   if (ray_is_closed(self)) {
     int narg = lua_gettop(self->L);

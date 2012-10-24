@@ -93,7 +93,7 @@ static int thread_new(lua_State* L) {
 
 static int thread_join(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
-  ray_actor_t* from = ray_get_self(L);
+  ray_actor_t* from = ray_current(L);
 
   ray_recv(from, self);
   uv_thread_join(&self->tid);

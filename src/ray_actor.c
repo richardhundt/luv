@@ -39,7 +39,7 @@ uv_loop_t* ray_get_loop(lua_State* L) {
   return loop;
 }
 
-ray_actor_t* ray_get_self(lua_State* L) {
+ray_actor_t* ray_current(lua_State* L) {
   lua_pushthread(L);
   lua_rawget(L, LUA_REGISTRYINDEX);
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, -1);
@@ -146,8 +146,9 @@ int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
     default: {
       /* got a data payload for main lua_State */
       TRACE("%p GOT DATA from %p\n", self, from);
-      ray_dequeue(from);
       assert(info >= RAY_SEND);
+      ray_dequeue(from);
+      ray_xcopy(from, self, info);
       self->flags |= RAY_ACTIVE;
       uv_async_send(&self->h.async);
     }
@@ -179,7 +180,7 @@ int ray_init_main(lua_State* L) {
     /* set up our reverse lookup */
     lua_pushvalue(L, -2);
     lua_rawset(L, LUA_REGISTRYINDEX);
-    assert(ray_get_self(L) == self);
+    assert(ray_current(L) == self);
 
     self->tid = (uv_thread_t)uv_thread_self();
 
@@ -202,10 +203,10 @@ ray_actor_t* ray_get_main(lua_State* L) {
 int ray_xcopy(ray_actor_t* a, ray_actor_t* b, int narg) {
   int top = lua_gettop(a->L);
   int i, base;
+  if (narg == LUA_MULTRET) narg = lua_gettop(a->L);
   base = lua_gettop(a->L) - narg + 1;
   lua_checkstack(a->L, narg);
   lua_checkstack(b->L, narg);
-  lua_settop(b->L, 0);
   for (i = base; i < base + narg; i++) {
     lua_pushvalue(a->L, i);
   }
@@ -216,6 +217,7 @@ int ray_xcopy(ray_actor_t* a, ray_actor_t* b, int narg) {
 
 int ray_push(ray_actor_t* self, int narg) {
   int i, base;
+  if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
   base = lua_gettop(self->L) - narg + 1;
   lua_checkstack(self->L, narg);
   for (i = base; i < base + narg; i++) {
@@ -266,21 +268,6 @@ int ray_actor_free(ray_actor_t* self) {
 /* send `self' a message, moving nargs from `from's stack  */
 int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
   TRACE("from: %p, to %p, info: %i\n", from, self, info);
-  assert(self->tid == from->tid);
-  if (info >= LUA_MULTRET) {
-    if (from != self) {
-      int narg;
-      if (info == LUA_MULTRET) {
-        narg = lua_gettop(from->L);
-      }
-      else {
-        narg = info;
-      }
-      lua_xmove(from->L, self->L, narg);
-    }
-  }
-
-  rayL_dump_stack(self->L);
   return self->v.send(self, from, info);
 }
 
