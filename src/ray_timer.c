@@ -2,26 +2,21 @@
 #include "ray_actor.h"
 #include "ray_timer.h"
 
-static const ray_vtable_t timer_v = {
-  send  : rayM_timer_send,
-  close : rayM_timer_close
-};
-
 static void _sleep_cb(uv_timer_t* handle, int status) {
   ray_actor_t* self = container_of(handle, ray_actor_t, h);
   lua_pushboolean(self->L, 1);
   ray_notify(self, 1);
-  ray_close(self);
+  ray_send(self, NULL, RAY_TIMER_CLOSE);
 }
 
 static int timer_sleep(lua_State* L) {
   lua_Number timeout = luaL_checknumber(L, 1);
   ray_actor_t* curr = ray_current(L);
-  ray_actor_t* self = ray_actor_new(L, RAY_TIMER_T, &timer_v);
+  ray_actor_t* self = ray_actor_new(L, RAY_TIMER_T, rayM_timer_send);
   lua_xmove(L, self->L, 1); /* keep self in our stack to avoid GC */
   uv_timer_init(ray_get_loop(L), &self->h.timer);
   uv_timer_start(&self->h.timer, _sleep_cb, (long)(timeout * 1000), 0L);
-  return ray_send(curr, self, RAY_YIELD);
+  return ray_send(curr, self, RAY_AWAIT);
 }
 
 static void _timer_cb(uv_timer_t* h, int status) {
@@ -48,13 +43,13 @@ int rayM_timer_send(ray_actor_t* self, ray_actor_t* from, int info) {
     }
     case RAY_TIMER_CLOSE: {
       uv_close(&self->h.handle, NULL);
+      ray_notify(self, RAY_READY);
       break;
     }
     default: {
       if (info > 0) {
         int64_t timeout = luaL_optlong(self->L, 1, 0L);
         int64_t repeat  = luaL_optlong(self->L, 2, 0L);
-        TRACE("RAY_TIMER_START: timeout %i, repeat %i\n", timeout, repeat);
         uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
       }
       else {
@@ -66,14 +61,10 @@ int rayM_timer_send(ray_actor_t* self, ray_actor_t* from, int info) {
 
   return 0;
 }
-int rayM_timer_close(ray_actor_t* self) {
-  uv_close(&self->h.handle, NULL);
-  return 0;
-}
 
 /* Lua API */
 static int timer_new(lua_State* L) {
-  ray_actor_t* self = ray_actor_new(L, RAY_TIMER_T, &timer_v);
+  ray_actor_t* self = ray_actor_new(L, RAY_TIMER_T, rayM_timer_send);
   ray_send(self, ray_current(L), RAY_TIMER_INIT);
   return 1;
 }
@@ -100,12 +91,12 @@ static int timer_wait(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
   ray_actor_t* from = ray_current(L);
   ray_enqueue(self, from);
-  return ray_send(from, self, RAY_YIELD);
+  return ray_send(from, self, RAY_AWAIT);
 }
 
 static int timer_free(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  ray_close(self);
+  ray_send(self, NULL, RAY_TIMER_CLOSE);
   ray_actor_free(self);
   return 1;
 }

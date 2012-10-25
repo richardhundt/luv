@@ -3,24 +3,16 @@
 #include "ray_actor.h"
 #include "ray_thread.h"
 
-static const ray_vtable_t thread_v = {
-  recv  : rayM_main_recv,
-  send  : rayM_main_send,
-  close : rayM_thread_close
-};
-
 static void _thread_enter(void* arg) {
-  ray_actor_t* self = (ray_actor_t*)arg;
-  lua_State* L = self->L;
-  rayL_dump_stack(L);
+  lua_State* L = (lua_State*)arg;
   ray_codec_decode(L);
 
   lua_remove(L, 1);
   luaL_checktype(L, 1, LUA_TFUNCTION);
   lua_pushcfunction(L, rayL_traceback);
   lua_insert(L, 1);
-  int nargs = lua_gettop(L) - 2;
 
+  int nargs = lua_gettop(L) - 2;
   int rv = lua_pcall(L, nargs, LUA_MULTRET, 1);
   lua_remove(L, 1); /* traceback */
 
@@ -34,7 +26,7 @@ static void _thread_enter(void* arg) {
     lua_insert(L, 1);
   }
 
-  self->flags |= RAY_CLOSED;
+  ray_send(ray_get_main(main), NULL, RAY_CLOSE);
 }
 
 static void _async_cb(uv_async_t* handle, int status) {
@@ -45,38 +37,31 @@ ray_actor_t* ray_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
 
-  ray_actor_t* self = ray_actor_new(L, RAY_THREAD_T, &thread_v);
+  ray_actor_t* self = ray_actor_new(L, RAY_THREAD_T, rayM_thread_send);
   lua_State*   L1   = luaL_newstate();
 
+  /* udata return value to the bottom of the stack */
   lua_insert(L, 1);
+
+  /* open standard libs */
   luaL_openlibs(L1);
 
-  /* replace the coroutine with a new vm state */
-  if (self->ref != LUA_NOREF) {
-    luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
-    self->ref = LUA_NOREF;
-  }
+  /* we have access to our child's main state */
+  self->u.data = L1;
+  ray_init_main(L1);
 
-  self->L = L1;
-
-  lua_pushlightuserdata(L1, self);
-  lua_setfield(L1, LUA_REGISTRYINDEX, RAY_MAIN);
-
-  /* luaopen_ray(L1); */
-
+  /* prep its stack for entry */
+  size_t len;
   lua_settop(L1, 0);
   ray_codec_encode(L, narg);
   luaL_checktype(L, -1, LUA_TSTRING);
-
-  size_t len;
   const char* data = lua_tolstring(L, -1, &len);
   lua_pushlstring(L1, data, len);
 
-  uv_thread_create(&self->tid, _thread_enter, self);
+  uv_thread_create(&self->tid, _thread_enter, L1);
 
   /* inserted udata below function, so now just udata on top */
   lua_settop(L, 1);
-
   return self;
 }
 

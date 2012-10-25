@@ -48,7 +48,7 @@ ray_actor_t* ray_current(lua_State* L) {
   return self;
 }
 
-ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
+ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_send_t v) {
   int top = lua_gettop(L);
   ray_actor_t* self = (ray_actor_t*)lua_newuserdata(L, sizeof(ray_actor_t));
   memset(self, 0, sizeof(ray_actor_t));
@@ -58,7 +58,7 @@ ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
     lua_setmetatable(L, -2);
   }
   if (v) {
-    self->v = *v;
+    self->send = v;
   }
 
   ngx_queue_init(&self->queue);
@@ -84,82 +84,86 @@ ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   return self;
 }
 
-static const ray_vtable_t ray_main_v = {
-  send : rayM_main_send
-};
+static int _main_RAY_SCHED(ray_actor_t* self, ray_actor_t* from, int info) {
+  ray_enqueue(self, from);
+  return 0;
+}
+
+static int _main_RAY_AWAIT(ray_actor_t* self, ray_actor_t* from, int info) {
+  ngx_queue_t* queue = &self->queue;
+
+  int events = 0;
+  lua_State* L = self->L;
+  uv_loop_t* loop = ray_get_loop(L);
+
+  ngx_queue_t* q;
+  ray_actor_t* a;
+
+  lua_settop(L, 0);
+
+  self->flags &= ~RAY_ACTIVE;
+
+  do {
+    while (!ngx_queue_empty(queue)) {
+      q = ngx_queue_head(queue);
+      a = ngx_queue_data(q, ray_actor_t, cond);
+      ray_dequeue(a);
+      TRACE("main %p sending RAY_EVAL to %p\n", self, a);
+      ray_send(a, self, RAY_EVAL);
+    }
+
+    TRACE("RUN EVENT LOOP...\n");
+    events = uv_run_once(loop);
+    TRACE("EVENTS: %i\n", events);
+
+    if (ray_is_active(self)) {
+      /* main has recieved a signal directly */
+      TRACE("main activated\n");
+      break;
+    }
+  }
+  while (events || !ngx_queue_empty(queue));
+
+  self->flags |= RAY_ACTIVE;
+
+  TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
+  rayL_dump_stack(L);
+  return lua_gettop(L);
+}
+
+static int _main_RAY_READY(ray_actor_t* self, ray_actor_t* from, int info) {
+  self->flags |= RAY_ACTIVE;
+  return 0;
+}
+
+static int _main_RAY_DATA(ray_actor_t* self, ray_actor_t* from, int info) {
+  self->flags |= RAY_ACTIVE;
+  return 0;
+}
+
+/* allows us to interrupt the event loop if main gets a message */
+static void _async_cb(uv_async_t* handle, int status) {
+  (void)status;
+  (void)handle;
+}
 
 int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
+  uv_async_send(&self->h.async);
   switch (info) {
-    case RAY_ASYNC: {
-      TRACE("RAY_ASYNC self: %p, from: %p\n", self, from);
-      if (ngx_queue_empty(&self->queue)) {
-        uv_async_send(&self->h.async);
-      }
-      ray_enqueue(self, from);
-      break;
-    }
-    case RAY_YIELD: {
-      ngx_queue_t* queue = &self->queue;
-
-      int events = 0;
-      lua_State* L = self->L;
-      uv_loop_t* loop = ray_get_loop(L);
-
-      ngx_queue_t* q;
-      ray_actor_t* a;
-
-      lua_settop(L, 0);
-
-      self->flags &= ~RAY_ACTIVE;
-
-      do {
-        while (!ngx_queue_empty(queue)) {
-          q = ngx_queue_head(queue);
-          a = ngx_queue_data(q, ray_actor_t, cond);
-          ray_dequeue(a);
-          TRACE("main %p sending RAY_EVAL to %p\n", self, a);
-          ray_send(a, self, RAY_EVAL);
-        }
-
-        TRACE("RUN EVENT LOOP...\n");
-        events = uv_run_once(loop);
-        TRACE("EVENTS: %i\n", events);
-
-        if (ray_is_active(self)) {
-          /* main has recieved a signal directly */
-          TRACE("main activated\n");
-          break;
-        }
-      }
-      while (events || !ngx_queue_empty(queue));
-
-      self->flags |= RAY_ACTIVE;
-
-      TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
-      rayL_dump_stack(L);
-      return lua_gettop(L);
-    }
-    case RAY_READY: {
-      TRACE("RAY_READY\n");
-      self->flags |= RAY_ACTIVE;
-      uv_async_send(&self->h.async);
-      break;
-    }
+    case RAY_SCHED:
+      return _main_RAY_SCHED(self, from, info);
+    case RAY_AWAIT:
+      return _main_RAY_AWAIT(self, from, info);
+    case RAY_READY:
+      return _main_RAY_READY(self, from, info);
     default: {
-      /* got a data payload for main lua_State */
-      TRACE("%p GOT DATA from %p\n", self, from);
-      assert(info >= RAY_SEND);
-      self->flags |= RAY_ACTIVE;
-      uv_async_send(&self->h.async);
+      assert(info >= RAY_DATA);
+      return _main_RAY_DATA(self, from, info);
     }
   }
   return 0;
 }
 
-static void _async_cb(uv_async_t* handle, int status) {
-  (void)handle;
-  (void)status;
-}
 
 int ray_init_main(lua_State* L) {
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
@@ -169,7 +173,7 @@ int ray_init_main(lua_State* L) {
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-    ray_actor_t* self = ray_actor_new(L, NULL, &ray_main_v);
+    ray_actor_t* self = ray_actor_new(L, NULL, rayM_main_send);
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
 
@@ -268,18 +272,12 @@ int ray_actor_free(ray_actor_t* self) {
 /* send `self' a message */
 int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
   TRACE("from: %p, to %p, info: %i\n", from, self, info);
-  if (info >= RAY_SEND) {
-    if (from->tid == self->tid) {
-      int narg = info;
-      if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
-      ray_xcopy(from, self, narg);
-    }
+  assert(from->tid == self->tid);
+  if (info >= RAY_DATA) {
+    int narg = info;
+    if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
+    ray_xcopy(from, self, narg);
   }
-  return self->v.send(self, from, info);
+  return self->send(self, from, info);
 }
 
-/* terminate a state */
-int ray_close(ray_actor_t* self) {
-  self->flags |= RAY_CLOSED;
-  return self->v.close(self);
-}

@@ -4,8 +4,8 @@
 #include "ray_object.h"
 
 void rayL_object_init(ray_object_t* self, uv_loop_t* loop) {
-  rayL_list_init(&self->send);
-  rayL_list_init(&self->queue);
+  ray_list_init(&self->send);
+  ray_list_init(&self->queue);
   self->flags = 0;
   self->loop  = loop;
   self->count = 0;
@@ -46,12 +46,12 @@ void rayL_object_close(ray_object_t* self) {
 
 int rayL_object_free(ray_object_t* self) {
   if (self->hash) {
-    rayL_hash_free(self->hash);
+    ray_hash_free(self->hash);
     self->hash = NULL;
   }
   if (self->list) {
     self->list = NULL;
-    rayL_list_free(self->list);
+    ray_list_free(self->list);
   }
 }
 

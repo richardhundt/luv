@@ -11,6 +11,7 @@
 /* actor flags */
 #define RAY_CLOSED (1 << 31)
 #define RAY_ACTIVE (1 << 30)
+#define RAY_MBDATA (1 << 29)
 
 #define ray_is_closed(A) ((A)->flags & RAY_CLOSED)
 #define ray_is_active(A) ((A)->flags & RAY_ACTIVE)
@@ -26,26 +27,23 @@
 
 typedef struct ray_actor_s ray_actor_t;
 
-typedef union ray_data_u {
-  void*       data;
-  ray_hash_t* hash;
-  ray_list_t* list;
+union ray_data_u {
+  int           info;
+  void*         data;
+  ray_hash_t*   hash;
+  ray_list_t*   list;
 } ray_data_t;
 
 typedef uv_buf_t ray_buf_t;
 
-typedef struct ray_vtable_s {
-  int (*send )(ray_actor_t* self, ray_actor_t* from, int narg);
-  int (*close)(ray_actor_t* self);
-} ray_vtable_t;
+typedef int (*ray_send_t)(ray_actor_t* self, ray_actor_t* from, int narg);
 
 struct ray_actor_s {
-  ray_vtable_t  v;
+  ray_send_t    send;
   ray_handle_t  h;
   ray_req_t     r;
-  lua_State*    L;   /* mailbox */
   uv_thread_t   tid;
-  uv_mutex_t    mtx;
+  lua_State*    L;   /* mailbox */
   int           flags;
   ngx_queue_t   queue;
   ngx_queue_t   cond;
@@ -60,12 +58,13 @@ struct ray_actor_s {
       (A)->flags &= ~RAY_ACTIVE)
 
 /* control messages to-from the main actor */
-#define RAY_SEND  LUA_MULTRET
-#define RAY_EVAL  RAY_SEND  - 1
-#define RAY_YIELD RAY_EVAL  - 1
-#define RAY_READY RAY_YIELD - 1
-#define RAY_ASYNC RAY_READY - 1
-#define RAY_USER  RAY_ASYNC - 1
+#define RAY_DATA  LUA_MULTRET
+#define RAY_EVAL  RAY_DATA  - 1
+#define RAY_AWAIT RAY_EVAL  - 1
+#define RAY_READY RAY_AWAIT - 1
+#define RAY_SCHED RAY_READY - 1
+#define RAY_CLOSE RAY_SCHED - 1
+#define RAY_USER  RAY_CLOSE - 1
 
 int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int narg);
 
@@ -75,7 +74,7 @@ uv_loop_t*   ray_get_loop(lua_State* L);
 ray_actor_t* ray_current(lua_State* L);
 ray_actor_t* ray_get_main(lua_State* L);
 
-ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);
+ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_send_t v);
 
 /* send a message to `self' from `from'. The `info' argument may be
 either a control message where info < 0 or if info >= 0 then it is
