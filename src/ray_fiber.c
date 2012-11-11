@@ -22,7 +22,6 @@ static int _fiber_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
 
   self->flags |= RAY_ACTIVE;
   self->flags &= ~RAY_FIBER_READY;
-  TRACE("RESUME WITH: %i\n", narg);
   int rc = lua_resume(L, narg);
 
   switch (rc) {
