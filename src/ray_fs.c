@@ -153,13 +153,13 @@ static void ray_fs_result(lua_State* L, uv_fs_t* req) {
 }
 
 static void ray_fs_cb(uv_fs_t* req) {
-  ray_actor_t* state = container_of(req, ray_actor_t, req);
+  ray_state_t* state = container_of(req, ray_state_t, req);
   ray_fs_result(state->L, req);
   rayL_state_ready(state);
 }
 
 #define RAY_FS_CALL(L, func, misc, ...) do { \
-    ray_actor_t* curr = rayL_state_self(L); \
+    ray_state_t* curr = rayL_state_self(L); \
     uv_loop_t*   loop = rayL_event_loop(L); \
     uv_fs_t*     req; \
     uv_fs_cb     cb; \
@@ -190,7 +190,7 @@ static void ray_fs_cb(uv_fs_t* req) {
   } while(0)
 
 static int ray_fs_open(lua_State* L) {
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
   const char*   path = luaL_checkstring(L, 1);
   ray_object_t* self;
 

@@ -28,27 +28,29 @@ SRCS := ray_lib.c \
  	ray_list.c \
  	ray_cond.c \
 	ray_queue.c \
-	ray_actor.c \
-	ray_fiber.c
+	ray_state.c
 
 OBJS := $(patsubst %.c,%.o,$(SRCS))
 
 BASE := ray_lib.o \
-	ray_hash.o  \
+	ray_hash.o \
 	ray_list.o \
 	ray_cond.o \
 	ray_queue.o \
-	ray_actor.o
+	ray_state.o
 
 LIBS := ./uv/libuv.a
 
-all: deps $(OBJS) ../ray/fiber.so ../ray/timer.so
+all: deps $(OBJS) ../ray/fiber.so ../ray/timer.so ../ray/net.so
 
 ../ray/fiber.so: $(OBJS)
 	$(CC) $(BASE) $(LIBS) ray_fiber.c -o ../ray/fiber.so $(LDFLAGS)
 
 ../ray/timer.so: $(OBJS)
 	$(CC) $(BASE) $(LIBS) ray_timer.c -o ../ray/timer.so $(LDFLAGS)
+
+../ray/net.so: $(OBJS)
+	$(CC) $(BASE) $(LIBS) ray_stream.c ray_net.c -o ../ray/net.so $(LDFLAGS)
 
 $(OBJS):
 	$(CC) -c $(CFLAGS) $(SRCS)

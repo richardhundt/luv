@@ -120,7 +120,7 @@ static int ray_new_process(lua_State* L) {
   }
   lua_pop(L, 1);
 
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
 
   ray_object_t* self = (ray_object_t*)lua_newuserdata(L, sizeof(ray_object_t));
   luaL_getmetatable(L, RAY_PROCESS_T);

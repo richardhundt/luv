@@ -31,7 +31,7 @@ static void _done_cb(uv_work_t* req) {
 
 static int ray_task_recv(lua_State* L) {
   ray_task_t*  self  = (ray_task_t*)lua_newuserdata(L, sizeof(ray_task_t));
-  ray_actor_t* outer = rayL_state_self(L);
+  ray_state_t* outer = rayL_state_self(L);
 
   self->type  = RAY_TTASK;
   self->outer = outer;

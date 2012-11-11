@@ -17,7 +17,7 @@ int rayL_zmq_socket_writable(void* socket) {
   return zmq_poll(items, 1, 0);
 }
 
-int rayL_zmq_socket_send(ray_object_t* self, ray_actor_t* state) {
+int rayL_zmq_socket_send(ray_object_t* self, ray_state_t* state) {
   size_t    len;
   zmq_msg_t msg;
 
@@ -34,7 +34,7 @@ int rayL_zmq_socket_send(ray_object_t* self, ray_actor_t* state) {
   return rv;
 }
 
-int rayL_zmq_socket_recv(ray_object_t* self, ray_actor_t* state) {
+int rayL_zmq_socket_recv(ray_object_t* self, ray_state_t* state) {
   zmq_msg_t msg;
   zmq_msg_init(&msg);
 
@@ -62,7 +62,7 @@ static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
     self->flags &= ~RAY_ZMQ_WRECV;
 
     ngx_queue_t* queue = ngx_queue_head(&self->send);
-    ray_actor_t* state = ngx_queue_data(queue, ray_actor_t, cond);
+    ray_state_t* state = ngx_queue_data(queue, ray_state_t, cond);
     ngx_queue_remove(queue);
 
     if (readable < 0) {
@@ -92,7 +92,7 @@ static void _zmq_poll_cb(uv_poll_t* handle, int status, int events) {
     self->flags &= ~RAY_ZMQ_WSEND;
 
     ngx_queue_t* queue = ngx_queue_head(&self->queue);
-    ray_actor_t* state = ngx_queue_data(queue, ray_actor_t, cond);
+    ray_state_t* state = ngx_queue_data(queue, ray_state_t, cond);
     ngx_queue_remove(queue);
 
     if (writable < 0) {
@@ -123,7 +123,7 @@ static int ray_zmq_new(lua_State* L) {
   luaL_getmetatable(L, RAY_ZMQ_CTX_T);
   lua_setmetatable(L, -2);
 
-  rayL_object_init((ray_actor_t*)thread, self);
+  rayL_object_init((ray_state_t*)thread, self);
 
   self->data = zmq_ctx_new();
   zmq_ctx_set(self->data, ZMQ_IO_THREADS, nthreads);
@@ -136,7 +136,7 @@ static int ray_zmq_ctx_socket(lua_State* L) {
   ray_object_t* ctx = (ray_object_t*)lua_touserdata(L, 1);
   int type = luaL_checkint(L, 2);
 
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
   ray_object_t* self = (ray_object_t*)lua_newuserdata(L, sizeof(ray_object_t));
   luaL_getmetatable(L, RAY_ZMQ_SOCKET_T);
   lua_setmetatable(L, -2);
@@ -174,7 +174,7 @@ static int ray_zmq_socket_connect(lua_State* L) {
 
 static int ray_zmq_socket_send(lua_State* L) {
   ray_object_t* self = (ray_object_t*)luaL_checkudata(L, 1, RAY_ZMQ_SOCKET_T);
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
   int rv = rayL_zmq_socket_send(self, curr);
   if (rv < 0) {
     int err = zmq_errno();
@@ -193,7 +193,7 @@ static int ray_zmq_socket_send(lua_State* L) {
 }
 static int ray_zmq_socket_recv(lua_State* L) {
   ray_object_t* self = (ray_object_t*)luaL_checkudata(L, 1, RAY_ZMQ_SOCKET_T);
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
   int rv = rayL_zmq_socket_recv(self, curr);
   if (rv < 0) {
     int err = zmq_errno();
@@ -474,7 +474,7 @@ static int ray_zmq_ctx_encoder(lua_State* L) {
 
 int rayL_zmq_ctx_decoder(lua_State* L) {
   TRACE("ZMQ ctx decode hook\n");
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
   luaL_checktype(L, -1, LUA_TLIGHTUSERDATA);
 
   ray_object_t* copy = (ray_object_t*)lua_newuserdata(L, sizeof(ray_object_t));

@@ -3,7 +3,7 @@
 #include "ray_cond.h"
 
 #include "ray_object.h"
-#include "ray_async.h"
+#include "ray_ready.h"
 
 static int ray_new_async(lua_State* L) {
   ray_sched_t* sched = lua_touserdata(L, lua_upvalueindex(1));
@@ -17,33 +17,33 @@ static int ray_new_async(lua_State* L) {
   return 1;
 }
 
-static int ray_async_recv(lua_State* L) {
+static int ray_ready_recv(lua_State* L) {
   ray_object_t* self = luaL_checkudata(L, RAY_ASYNC_T);
   return 1;
 }
-static luaL_Reg ray_async_funcs[] = {
+static luaL_Reg ray_ready_funcs[] = {
   {"create",    ray_new_async},
   {NULL,        NULL}
 };
 
-static luaL_Reg ray_async_meths[] = {
-  {"recv",     ray_async_recv},
-  {"__gc",      ray_async_free},
-  {"__tostring",ray_async_tostring},
+static luaL_Reg ray_ready_meths[] = {
+  {"recv",     ray_ready_recv},
+  {"__gc",      ray_ready_free},
+  {"__tostring",ray_ready_tostring},
   {NULL,        NULL}
 };
 
-LUALIB_API int luaopenL_ray_async(lua_State *L) {
+LUALIB_API int luaopenL_ray_ready(lua_State *L) {
   luaL_newmetatable(L, RAY_ASYNC_T);
   lua_pushvalue(L, -1);
   lua_setfield(L, -2, "__index");
-  luaL_openlib(L, NULL, ray_async_meths, 0);
+  luaL_openlib(L, NULL, ray_ready_meths, 0);
   lua_pop(L, 1);
 
   /* async */
-  ray__new_namespace(L, "ray_async");
+  ray__new_namespace(L, "ray_ready");
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_SCHED_O);
-  luaL_openlib(L, NULL, ray_async_funcs, 1);
+  luaL_openlib(L, NULL, ray_ready_funcs, 1);
 
   /* ray.async */
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_REG_KEY);

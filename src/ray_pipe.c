@@ -1,5 +1,5 @@
-#include "ray_common.h"
-#include "ray_object.h"
+#include "ray_lib.h"
+#include "ray_state.h"
 
 static int ray_pipe_new(lua_State* L) {
   ray_object_t* self = rayL_object_new(L, RAY_PIPE_T);
@@ -41,7 +41,7 @@ static int ray_pipe_bind(lua_State* L) {
 static int ray_pipe_connect(lua_State* L) {
   ray_object_t* self = (ray_object_t*)luaL_checkudata(L, 1, RAY_PIPE_T);
   const char*   path = luaL_checkstring(L, 2);
-  ray_actor_t*  curr = rayL_state_self(L);
+  ray_state_t*  curr = rayL_state_self(L);
 
   uv_pipe_connect(&curr->req.connect, &self->h.pipe, path, rayL_connect_cb);
 

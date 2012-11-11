@@ -1,10 +1,10 @@
 #include "ray_lib.h"
 #include "ray_codec.h"
-#include "ray_actor.h"
+#include "ray_state.h"
 #include "ray_thread.h"
 
 static void _thread_enter(void* arg) {
-  ray_actor_t* self = (ray_actor_t*)arg;
+  ray_state_t* self = (ray_state_t*)arg;
   lua_State* L = (lua_State*)self->u.data;
   ray_codec_decode(L);
 
@@ -31,15 +31,15 @@ static void _thread_enter(void* arg) {
 }
 
 static void _async_cb(uv_async_t* handle, int status) {
-  ray_actor_t* self = container_of(handle, ray_actor_t, h);
+  ray_state_t* self = container_of(handle, ray_state_t, h);
   (void)status;
   ray_send(self, NULL, RAY_CLOSE);
 }
 
-static int _thread_RAY_AWAIT(ray_actor_t* self, ray_actor_t* from, int info) {
+static int _thread_RAY_AWAIT(ray_state_t* self, ray_state_t* from, int info) {
 }
 
-static int thread_xdup(ray_actor_t* a, ray_actor_t* b, int narg) {
+static int thread_xdup(ray_state_t* a, ray_state_t* b, int narg) {
   lua_State* src = a->L;
   lua_State* dst = b->L;
   int type = lua_type(src, -1);
@@ -83,7 +83,7 @@ static int thread_xdup(ray_actor_t* a, ray_actor_t* b, int narg) {
   return 0;
 }
 
-int rayM_thread_send(ray_actor_t* self, ray_actor_t* from, int info) {
+int rayM_thread_send(ray_state_t* self, ray_state_t* from, int info) {
   switch (info) {
     case RAY_AWAIT:
       return _thread_RAY_AWAIT(self, from, info);
@@ -95,11 +95,11 @@ int rayM_thread_send(ray_actor_t* self, ray_actor_t* from, int info) {
   }
 }
 
-ray_actor_t* ray_thread_new(lua_State* L) {
+ray_state_t* ray_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
 
-  ray_actor_t* self = ray_actor_new(L, RAY_THREAD_T, rayM_thread_send);
+  ray_state_t* self = ray_state_new(L, RAY_THREAD_T, rayM_thread_send);
   lua_State*   L1   = luaL_newstate();
 
   /* udata return value to the bottom of the stack */
@@ -129,25 +129,25 @@ ray_actor_t* ray_thread_new(lua_State* L) {
 
 /* Lua API */
 static int thread_new(lua_State* L) {
-  ray_actor_t* self = ray_thread_new(L);
+  ray_state_t* self = ray_thread_new(L);
   return 1;
 }
 
 static int thread_join(lua_State* L) {
-  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
-  ray_actor_t* from = ray_current(L);
+  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
+  ray_state_t* from = ray_current(L);
 
   uv_thread_join(&self->tid);
   return lua_gettop(self->L);
 }
 
 static int thread_free(lua_State* L) {
-  ray_actor_t* self = lua_touserdata(L, 1);
+  ray_state_t* self = lua_touserdata(L, 1);
   ray_send(self, NULL, RAY_CLOSE);
   return 1;
 }
 static int thread_tostring(lua_State* L) {
-  ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
+  ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_THREAD_T, self);
   return 1;
 }

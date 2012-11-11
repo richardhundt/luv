@@ -6,6 +6,6 @@
 
 #define RAY_ASYNC_T "ray.async"
 
-LUALIB_API int luaopenL_ray_async(lua_State *L);
+LUALIB_API int luaopenL_ray_ready(lua_State *L);
 
 #endif /* RAY_ASYNC_H */

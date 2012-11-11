@@ -3,7 +3,7 @@
 
 #include "ray_lib.h"
 
-ray_actor_t* ray_timer_new(lua_State* L);
+ray_state_t* ray_timer_new(lua_State* L);
 
 #define RAY_TIMER_INIT    1
 #define RAY_TIMER_STOP    2

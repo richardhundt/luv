@@ -24,7 +24,7 @@ typedef struct ray_object_s ray_object_t;
 ray_object_t* rayL_object_new   (lua_State* L, const char* meta);
 ray_object_t* rayL_object_check (lua_State* L, const char* meta);
 
-void rayL_object_init  (ray_actor_t* state, ray_object_t* self);
+void rayL_object_init  (ray_state_t* state, ray_object_t* self);
 void rayL_object_close (ray_object_t* self);
 int  rayL_object_free  (ray_object_t* self);
 
