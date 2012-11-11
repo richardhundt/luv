@@ -1,31 +1,15 @@
 #include "ray_common.h"
 #include "ray_lib.h"
 #include "ray_actor.h"
+#include "ray_queue.h"
 #include "ray_codec.h"
 
-/*
-  The Ray actor system is a C abstraction which functions exclusively by
-  message passing between `ray_actor_t' instances. Each actor has a mailbox
-  which is a plain lua_State* and can therefore hold any arbitrary stack of
-  Lua values.
-
-  Messages are passed by calling `ray_send' which currently looks like this:
-
-  ```
-  int ray_send(ray_actor_t* self, ray_actor_t* from, int mesg)
-  ```
-
-  The `mesg' parameter is a C-level message if < 0, otherwise assumed to
-  be the number of items to move from the sender to the receiver's mailbox.
-
-  You can invent your own protocols in "user space" by pushing first a messsage
-  type onto the receiver's stack and then the data, or you can extend the
-  control messages negatively by doing something like this:
-
-  #define MY_MESG1 RAY_USER
-  #define MY_MESG2 MY_MESG1 - 1
-
-*/
+ray_actor_t* ray_get_main(lua_State* L) {
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
+  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, -1);
+  lua_pop(L, 1);
+  return self;
+}
 
 uv_loop_t* ray_get_loop(lua_State* L) {
   lua_getfield(L, LUA_REGISTRYINDEX, RAY_LOOP);
@@ -48,160 +32,27 @@ ray_actor_t* ray_current(lua_State* L) {
   return self;
 }
 
-ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_send_t v) {
-  int top = lua_gettop(L);
-  ray_actor_t* self = (ray_actor_t*)lua_newuserdata(L, sizeof(ray_actor_t));
-  memset(self, 0, sizeof(ray_actor_t));
-
-  if (m) {
-    luaL_getmetatable(L, m);
-    lua_setmetatable(L, -2);
+int ray_push(ray_actor_t* self, int narg) {
+  int i, base;
+  if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
+  base = lua_gettop(self->L) - narg + 1;
+  lua_checkstack(self->L, narg);
+  for (i = base; i < base + narg; i++) {
+    lua_pushvalue(self->L, i);
   }
-  if (v) {
-    self->send = v;
-  }
-
-  ngx_queue_init(&self->queue);
-  ngx_queue_init(&self->cond);
-
-  /* every actor has a lua_State* */
-  self->L = lua_newthread(L);
-
-  /* anchored in the registry */
-  self->ref = luaL_ref(L, LUA_REGISTRYINDEX);
-
-  /* with a copy of `self' on its stack */
-  /* or not...
-  lua_pushvalue(L, -1);
-  lua_xmove(L, self->L, 1);
-  */
-
-  /* and knows its thread boundary */
-  self->tid   = (uv_thread_t)uv_thread_self();
-  self->flags = 0;
-
-  assert(lua_gettop(L) == top + 1);
-  return self;
+  return narg;
 }
 
-static int _main_RAY_SCHED(ray_actor_t* self, ray_actor_t* from, int info) {
-  ray_enqueue(self, from);
-  return 0;
+void ray_push_actor(lua_State* L, ray_actor_t* actor) {
+  lua_checkstack(L, 2);
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_WEAK);
+  lua_rawgeti(L, -1, actor->id);
+  lua_remove(L, -2);
+  assert(lua_type(L, -1) == LUA_TUSERDATA);
 }
 
-static int _main_RAY_AWAIT(ray_actor_t* self, ray_actor_t* from, int info) {
-  ngx_queue_t* queue = &self->queue;
-
-  int events = 0;
-  lua_State* L = self->L;
-  uv_loop_t* loop = ray_get_loop(L);
-
-  ngx_queue_t* q;
-  ray_actor_t* a;
-
-  lua_settop(L, 0);
-
-  self->flags &= ~RAY_ACTIVE;
-
-  do {
-    while (!ngx_queue_empty(queue)) {
-      q = ngx_queue_head(queue);
-      a = ngx_queue_data(q, ray_actor_t, cond);
-      ray_dequeue(a);
-      TRACE("main %p sending RAY_EVAL to %p\n", self, a);
-      ray_send(a, self, RAY_EVAL);
-    }
-
-    TRACE("RUN EVENT LOOP...\n");
-    events = uv_run_once(loop);
-    TRACE("EVENTS: %i\n", events);
-
-    if (ray_is_active(self)) {
-      /* main has recieved a signal directly */
-      TRACE("main activated\n");
-      break;
-    }
-  }
-  while (events || !ngx_queue_empty(queue));
-
-  self->flags |= RAY_ACTIVE;
-
-  TRACE("UNLOOP: returning: %i\n", lua_gettop(L));
-  rayL_dump_stack(L);
-  return lua_gettop(L);
-}
-
-static int _main_RAY_READY(ray_actor_t* self, ray_actor_t* from, int info) {
-  self->flags |= RAY_ACTIVE;
-  return 0;
-}
-
-static int _main_RAY_DATA(ray_actor_t* self, ray_actor_t* from, int info) {
-  self->flags |= RAY_ACTIVE;
-  return 0;
-}
-
-/* allows us to interrupt the event loop if main gets a message */
-static void _async_cb(uv_async_t* handle, int status) {
-  (void)status;
-  (void)handle;
-}
-
-int rayM_main_send(ray_actor_t* self, ray_actor_t* from, int info) {
-  uv_async_send(&self->h.async);
-  switch (info) {
-    case RAY_SCHED:
-      return _main_RAY_SCHED(self, from, info);
-    case RAY_AWAIT:
-      return _main_RAY_AWAIT(self, from, info);
-    case RAY_READY:
-      return _main_RAY_READY(self, from, info);
-    default: {
-      assert(info >= RAY_DATA);
-      return _main_RAY_DATA(self, from, info);
-    }
-  }
-  return 0;
-}
-
-
-int ray_init_main(lua_State* L) {
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
-  if (lua_isnil(L, -1)) {
-
-#ifndef WIN32
-  signal(SIGPIPE, SIG_IGN);
-#endif
-
-    ray_actor_t* self = ray_actor_new(L, NULL, rayM_main_send);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
-
-    self->L = L;
-
-    assert(lua_pushthread(L)); /* must be main thread */
-
-    /* set up our reverse lookup */
-    lua_pushvalue(L, -2);
-    lua_rawset(L, LUA_REGISTRYINDEX);
-    assert(ray_current(L) == self);
-
-    self->tid = (uv_thread_t)uv_thread_self();
-
-    uv_async_init(ray_get_loop(L), &self->h.async, _async_cb);
-    uv_unref(&self->h.handle);
-
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 1);
-  return 1;
-}
-
-ray_actor_t* ray_get_main(lua_State* L) {
-  lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
-  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, -1);
-  lua_pop(L, 1);
-  return self;
+void ray_push_self(ray_actor_t* self) {
+  ray_push_actor(self->L, self);
 }
 
 int ray_xcopy(ray_actor_t* a, ray_actor_t* b, int narg) {
@@ -219,65 +70,284 @@ int ray_xcopy(ray_actor_t* a, ray_actor_t* b, int narg) {
   return narg;
 }
 
-int ray_push(ray_actor_t* self, int narg) {
-  int i, base;
-  if (narg == LUA_MULTRET) narg = lua_gettop(self->L);
-  base = lua_gettop(self->L) - narg + 1;
-  lua_checkstack(self->L, narg);
-  for (i = base; i < base + narg; i++) {
-    lua_pushvalue(self->L, i);
+uint32_t ray_genid(void) {
+  static uint32_t x = 1;
+  x = x * 2621124293u + 1;
+  return x;
+}
+
+ray_msg_t ray_mailbox_get(ray_actor_t* self) {
+  ray_msg_t msg = ray_queue_get_integer(&self->mbox);
+  ray_queue_get_tuple(&self->mbox, self->L);
+  return msg;
+}
+void ray_mailbox_put(ray_actor_t* self, lua_State* L, ray_msg_t msg) {
+  int narg = ray_msg_data(msg);
+  if (narg < 0) narg = lua_gettop(L);
+  ray_queue_put_integer(&self->mbox, msg);
+  ray_queue_put_tuple(&self->mbox, L, narg);
+}
+int ray_mailbox_empty(ray_actor_t* self) {
+  return ray_queue_empty(&self->mbox);
+}
+
+ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v) {
+  ray_actor_t* self = (ray_actor_t*)lua_newuserdata(L, sizeof(ray_actor_t));
+  memset(self, 0, sizeof(ray_actor_t));
+
+  if (m) {
+    luaL_getmetatable(L, m);
   }
+  else {
+    luaL_getmetatable(L, RAY_ACTOR_T);
+  }
+  lua_setmetatable(L, -2);
+
+  if (v) {
+    self->v = *v;
+  }
+
+  self->L     = lua_newthread(L);
+  self->L_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+  self->id    = ray_genid();
+  self->tid   = (uv_thread_t)uv_thread_self();
+
+  /* set up lookup mapping from id to the full userdata */
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_WEAK);
+  lua_pushvalue(L, -2);
+  lua_rawseti(L, -2, self->id);
+  lua_pop(L, 1);
+
+  /* anchored in the current lua_State* with no extra refs */
+  self->ref = LUA_NOREF;
+  self->ref_count = 0;
+
+  ngx_queue_init(&self->cond);
+  ray_queue_init(&self->mbox, L, RAY_MBOX_SIZE);
+
+  return self;
+}
+
+typedef uint32_t ray_aid_t;
+
+ray_actor_t* ray_get_actor(lua_State* L, ray_aid_t id) {
+  lua_checkstack(L, 2);
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_WEAK);
+  lua_rawgeti(L, -1, id);
+  ray_actor_t* actor = (ray_actor_t*)lua_touserdata(L, -1);
+  lua_pop(L, 2);
+  return actor;
+}
+
+int ray_yield(ray_actor_t* self) {
+  return self->v.yield(self);
+}
+int ray_close(ray_actor_t* self) {
+  return self->v.close(self);
+}
+int ray_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
+  return self->v.react(self, from, msg);
+}
+
+int ray_send(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
+  int narg = ray_msg_data(msg);
+
+  if (narg && from != self) {
+    if (narg < 0) narg = lua_gettop(from->L);
+    ray_mailbox_put(self, from->L, msg);
+  }
+
+  self->v.react(self, from, msg);
   return narg;
 }
 
-int ray_notify(ray_actor_t* self, int info) {
-  int count = 0;
-  ngx_queue_t* q;
-  ray_actor_t* a;
-  while (!ngx_queue_empty(&self->queue)) {
-    q = ngx_queue_head(&self->queue);
-    a = ngx_queue_data(q, ray_actor_t, cond);
-    ray_dequeue(a);
-    ray_send(a, self, info);
-    count++;
+ray_msg_t ray_recv(ray_actor_t* self) {
+  if (!ray_mailbox_empty(self)) {
+    return ray_mailbox_get(self);
   }
-  return count;
+  return ray_yield(self);
 }
 
-/* wake one waiting actor */
-int ray_signal(ray_actor_t* self, int info) {
-  int seen = 0;
-  ngx_queue_t* q;
-  ray_actor_t* a;
-  if (!ngx_queue_empty(&self->queue)) {
-    q = ngx_queue_head(&self->queue);
-    a = ngx_queue_data(q, ray_actor_t, cond);
-    ray_dequeue(a);
-    ray_send(a, self, info);
-    seen++;
-  }
-  return seen;
-}
-
-int ray_actor_free(ray_actor_t* self) {
+int ray_free(ray_actor_t* self) {
   /* unanchor from registry */
-  if (self->ref != LUA_NOREF) {
+  if (self->L_ref != LUA_NOREF) {
     lua_settop(self->L, 0);
+    luaL_unref(self->L, LUA_REGISTRYINDEX, self->L_ref);
+    self->L_ref = LUA_NOREF;
+  }
+  return ray_close(self);
+}
+
+/* reference counting */
+void ray_incref(ray_actor_t* self) {
+  //TRACE("refcount: %i\n", self->ref_count);
+  if (self->ref_count++ == 0) {
+    ray_push_self(self);
+    self->ref = luaL_ref(self->L, LUA_REGISTRYINDEX);
+  }
+}
+void ray_decref(ray_actor_t* self) {
+  //TRACE("refcount: %i\n", self->ref_count);
+  if (--self->ref_count == 0) {
     luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
     self->ref = LUA_NOREF;
+  }
+}
+
+int ray_hash_set_actor(ray_hash_t* self, const char* key, ray_actor_t* val) {
+  if (!ray_hash_lookup(self, key)) {
+    ray_incref(val);
+  }
+  return ray_hash_set(self, key, val);
+}
+ray_actor_t* ray_hash_remove_actor(ray_hash_t* self, const char* key) {
+  ray_actor_t* val = (ray_actor_t*)ray_hash_remove(self, key);
+  ray_decref(val);
+  return val;
+}
+
+void ray_queue_put_actor(ray_queue_t* self, ray_actor_t* item) {
+  ray_push_actor(self->L, item);
+  ray_queue_put(self);
+}
+ray_actor_t* ray_queue_get_actor(ray_queue_t* self) {
+  if (!ray_queue_get(self)) return NULL;
+  ray_actor_t* item = (ray_actor_t*)lua_touserdata(self->L, -1);
+  lua_pop(self->L, 1);
+  return item;
+}
+
+/* default actor meta-methods */
+static int actor_free(lua_State* L) {
+  ray_actor_t* self = lua_touserdata(L, 1);
+  ray_free(self);
+  return 1;
+}
+static int actor_tostring(lua_State* L) {
+  ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
+  const char* name = RAY_ACTOR_T;
+  luaL_getmetafield(L, 1, "__name");
+  if (!lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    name = lua_tostring(L, -1);
+  }
+  lua_pushfstring(L, "userdata<%s>: %p", name, self);
+  return 1;
+}
+
+static luaL_Reg actor_meths[] = {
+  {"__gc",        actor_free},
+  {"__tostring",  actor_tostring},
+  {NULL,          NULL}
+};
+
+/* allows us to interrupt the event loop if main gets a message */
+static void _main_async_cb(uv_async_t* handle, int status) {
+  (void)status;
+  (void)handle;
+}
+
+static int _main_yield(ray_actor_t* self) {
+  int events = 0;
+  lua_State* L = self->L;
+  uv_loop_t* loop = ray_get_loop(L);
+  lua_settop(L, 0);
+
+  ngx_queue_t* ready = (ngx_queue_t*)self->u.data;
+
+  self->flags &= ~RAY_ACTIVE;
+  do {
+    while (!ngx_queue_empty(ready)) {
+      ngx_queue_t* q = ngx_queue_last(ready);
+      ray_actor_t* a = ngx_queue_data(q, ray_actor_t, cond);
+      ray_decref(a);
+      ngx_queue_remove(q);
+      a->v.react(a, self, ray_msg(RAY_ASYNC,0));
+    }
+    events = uv_run_once(loop);
+    if (ray_is_active(self)) break;
+  }
+  while (events || !ngx_queue_empty(ready));
+
+  self->flags |= RAY_ACTIVE;
+  return lua_gettop(L);
+}
+
+static int _main_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
+  switch (ray_msg_type(msg)) {
+    case RAY_ASYNC: {
+      ngx_queue_t* ready = (ngx_queue_t*)self->u.data;
+      ngx_queue_insert_head(ready, &from->cond);
+      ray_incref(from);
+    }
+    default: {
+      ray_mailbox_get(self);
+      self->flags |= RAY_ACTIVE;
+    }
+  }
+  uv_async_send(&self->h.async);
+  return 0;
+}
+
+static int _main_close(ray_actor_t* self) {
+  if (self->u.data) {
+    free(self->u.data);
   }
   return 1;
 }
 
-/* send `self' a message */
-int ray_send(ray_actor_t* self, ray_actor_t* from, int info) {
-  TRACE("from: %p, to %p, info: %i\n", from, self, info);
-  assert(from->tid == self->tid);
-  if (info >= RAY_DATA) {
-    int narg = info;
-    if (narg == LUA_MULTRET) narg = lua_gettop(from->L);
-    ray_xcopy(from, self, narg);
+static ray_vtable_t main_v = {
+  react: _main_react,
+  yield: _main_yield,
+  close: _main_close
+};
+
+/* initialize the main actor */
+int ray_init_main(lua_State* L) {
+  lua_getfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
+  if (lua_isnil(L, -1)) {
+
+#ifndef WIN32
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
+    /* weak value table for id to udata maps */
+    lua_newtable(L);
+    lua_newtable(L);
+    lua_pushstring(L, "v");
+    lua_setfield(L, -2, "__blah");
+    lua_setmetatable(L, -2);
+    lua_setfield(L, LUA_REGISTRYINDEX, RAY_WEAK);
+
+    /* default actor metatable */
+    rayL_class(L, RAY_ACTOR_T, actor_meths);
+    lua_pop(L, 1);
+
+    ray_actor_t* self = ray_actor_new(L, RAY_ACTOR_T, &main_v);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, LUA_REGISTRYINDEX, RAY_MAIN);
+
+    self->L = L;
+
+    assert(lua_pushthread(L)); /* must be main thread */
+
+    /* set up our reverse lookup */
+    lua_pushvalue(L, -2);
+    lua_rawset(L, LUA_REGISTRYINDEX);
+    assert(ray_current(L) == self);
+
+    self->tid = (uv_thread_t)uv_thread_self();
+
+    /* queue for fibers */
+    self->u.data = malloc(sizeof(ngx_queue_t));
+    ngx_queue_init((ngx_queue_t*)self->u.data);
+
+    uv_async_init(ray_get_loop(L), &self->h.async, _main_async_cb);
+    uv_unref(&self->h.handle);
+
+    lua_pop(L, 1);
   }
-  return self->send(self, from, info);
+  lua_pop(L, 1);
+  return 1;
 }
 

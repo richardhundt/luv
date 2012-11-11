@@ -1,100 +1,43 @@
-#include "ray_common.h"
+#include "ray_lib.h"
 #include "ray_actor.h"
+#include "ray_queue.h"
 #include "ray_cond.h"
 
-int rayL_cond_init(ray_cond_t* cond) {
-  ngx_queue_init(cond);
-  return 1;
+ray_cond_t* ray_cond_new(lua_State* L) {
+  ray_cond_t* self = (ray_cond_t*)malloc(sizeof(ray_cond_t));
+  ngx_queue_init(&self->queue);
+  return self;
 }
-int rayL_cond_wait(ray_cond_t* cond, ray_actor_t* curr) {
-  ngx_queue_insert_tail(cond, &curr->cond);
-  TRACE("SUSPEND state %p\n", curr);
-  return rayL_state_suspend(curr);
+
+int ray_cond_wait(ray_cond_t* self, ray_actor_t* that) {
+  ngx_queue_insert_head(&self->queue, &that->cond);
+  ray_incref(that);
+  return ray_recv(that);
 }
-int rayL_cond_signal(ray_cond_t* cond) {
-  ngx_queue_t* q;
-  ray_actor_t* s;
-  if (!ngx_queue_empty(cond)) {
-    q = ngx_queue_head(cond);
-    s = ngx_queue_data(q, ray_actor_t, cond);
-    ngx_queue_remove(q);
-    TRACE("READY state %p\n", s);
-    rayL_state_ready(s);
-    return 1;
+
+int ray_cond_signal(ray_cond_t* self, ray_actor_t* from, ray_msg_t msg) {
+  int narg;
+  narg = ray_msg_data(msg);
+  if (from && narg < 0) narg = lua_gettop(from->L);
+
+  ngx_queue_t* queue = &self->queue;
+  if (ngx_queue_empty(queue)) return 0;
+
+  ngx_queue_t* item;
+  ray_actor_t* wait;
+  while (!ngx_queue_empty(queue)) {
+    item = ngx_queue_last(queue);
+    wait = ngx_queue_data(item, ray_actor_t, cond);
+    ngx_queue_remove(&wait->cond);
+    ray_decref(wait);
+    ray_push(from, narg);
+    ray_send(wait, from, msg);
   }
-  return 0;
-}
-int rayL_cond_broadcast(ray_cond_t* cond) {
-  ngx_queue_t* q;
-  ray_actor_t* s;
-  int sendd = 0;
-  while (!ngx_queue_empty(cond)) {
-    q = ngx_queue_head(cond);
-    s = ngx_queue_data(q, ray_actor_t, cond);
-    ngx_queue_remove(q);
-    TRACE("READY state %p\n", s);
-    rayL_state_ready(s);
-    ++sendd;
-  }
-  return sendd;
-}
 
-static int ray_cond_new(lua_State* L) {
-  ray_cond_t* cond = (ray_cond_t*)lua_newuserdata(L, sizeof(ray_cond_t));
-
-  lua_pushvalue(L, 1);
-  luaL_getmetatable(L, RAY_COND_T);
-  lua_setmetatable(L, -2);
-
-  rayL_cond_init(cond);
+  lua_pop(from->L, narg);
   return 1;
 }
 
-static int ray_cond_wait(lua_State *L) {
-  ray_cond_t*  cond  = (ray_cond_t*)lua_touserdata(L, 1);
-  ray_actor_t* curr;
-  if (!lua_isnoneornil(L, 2)) {
-    curr = (ray_actor_t*)luaL_checkudata(L, 2, RAY_FIBER_T);
-  }
-  else {
-    curr = (ray_actor_t*)rayL_state_self(L);
-  }
-  rayL_cond_wait(cond, curr);
-  return 1;
+void ray_cond_free(ray_cond_t* self) {
+  free(self);
 }
-static int ray_cond_signal(lua_State *L) {
-  ray_cond_t* cond = (ray_cond_t*)lua_touserdata(L, 1);
-  rayL_cond_signal(cond);
-  return 1;
-}
-static int ray_cond_broadcast(lua_State *L) {
-  ray_cond_t* cond = (ray_cond_t*)lua_touserdata(L, 1);
-  rayL_cond_broadcast(cond);
-  return 1;
-}
-
-static int ray_cond_free(lua_State *L) {
-  ray_cond_t* cond = (ray_cond_t*)lua_touserdata(L, 1);
-  (void)cond;
-  return 0;
-}
-
-static int ray_cond_tostring(lua_State *L) {
-  ray_cond_t* cond = (ray_cond_t*)luaL_checkudata(L, 1, RAY_COND_T);
-  lua_pushfstring(L, "userdata<%s>: %p", RAY_COND_T, cond);
-  return 1;
-}
-
-luaL_Reg ray_cond_funcs[] = {
-  {"create",    ray_cond_new}
-};
-
-luaL_Reg ray_cond_meths[] = {
-  {"wait",      ray_cond_wait},
-  {"signal",    ray_cond_signal},
-  {"broadcast", ray_cond_broadcast},
-  {"__gc",      ray_cond_free},
-  {"__tostring",ray_cond_tostring},
-  {NULL,        NULL}
-};
-

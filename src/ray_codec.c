@@ -15,7 +15,7 @@ static int decode_table(lua_State* L, ray_buffer_t* buf, int seen);
 } while (0)
 
 #define encoder_hook(L, buf, seen) do { \
-  rayL_buffer_put(buf, RAY_CODEC_TUSR); \
+  ray_buffer_put(buf, RAY_CODEC_TUSR); \
   lua_pushvalue(L, -2); \
   lua_call(L, 1, 2); \
   int cbt = lua_type(L, -2); \
@@ -33,23 +33,23 @@ static void encode_value(lua_State* L, ray_buffer_t* buf, int val, int seen) {
 
   lua_pushvalue(L, val);
 
-  rayL_buffer_put(buf, (uint8_t)val_type);
+  ray_buffer_put(buf, (uint8_t)val_type);
 
   switch (val_type) {
   case LUA_TBOOLEAN: {
     int v = lua_toboolean(L, -1);
-    rayL_buffer_put(buf, (uint8_t)v);
+    ray_buffer_put(buf, (uint8_t)v);
     break;
   }
   case LUA_TSTRING: {
     const char *str_val = lua_tolstring(L, -1, &len);
-    rayL_buffer_write_uleb128(buf, (uint32_t)len);
-    rayL_buffer_write(buf, (uint8_t*)str_val, len);
+    ray_buffer_write_uleb128(buf, (uint32_t)len);
+    ray_buffer_write(buf, (uint8_t*)str_val, len);
     break;
   }
   case LUA_TNUMBER: {
     lua_Number v = lua_tonumber(L, -1);
-    rayL_buffer_write(buf, (uint8_t*)(void*)&v, sizeof v);
+    ray_buffer_write(buf, (uint8_t*)(void*)&v, sizeof v);
     break;
   }
   case LUA_TTABLE: {
@@ -60,8 +60,8 @@ static void encode_value(lua_State* L, ray_buffer_t* buf, int val, int seen) {
       /* already seen */
       ref = lua_tointeger(L, -1);
       tag = RAY_CODEC_TREF;
-      rayL_buffer_put(buf, tag);
-      rayL_buffer_write_uleb128(buf, (uint32_t)ref);
+      ray_buffer_put(buf, tag);
+      ray_buffer_write_uleb128(buf, (uint32_t)ref);
       lua_pop(L, 1); /* pop ref */
     }
     else {
@@ -72,7 +72,7 @@ static void encode_value(lua_State* L, ray_buffer_t* buf, int val, int seen) {
       }
       else {
         tag = RAY_CODEC_TVAL;
-        rayL_buffer_put(buf, tag);
+        ray_buffer_put(buf, tag);
         encode_table(L, buf, seen);
       }
     }
@@ -85,13 +85,13 @@ static void encode_value(lua_State* L, ray_buffer_t* buf, int val, int seen) {
     if (!lua_isnil(L, -1)) {
       ref = lua_tointeger(L, -1);
       tag = RAY_CODEC_TREF;
-      rayL_buffer_put(buf, tag);
-      rayL_buffer_write_uleb128(buf, (uint32_t)ref);
+      ray_buffer_put(buf, tag);
+      ray_buffer_write_uleb128(buf, (uint32_t)ref);
       lua_pop(L, 1); /* pop ref */
     }
     else {
       int i;
-      ray_buffer_t* b = rayL_buffer_new(64);
+      ray_buffer_t* b = ray_buffer_new(64);
       lua_Debug ar;
 
       lua_pop(L, 1); /* pop nil */
@@ -105,14 +105,14 @@ static void encode_value(lua_State* L, ray_buffer_t* buf, int val, int seen) {
       encoder_seen(L, -1, seen);
 
       tag = RAY_CODEC_TVAL;
-      rayL_buffer_put(buf, tag);
+      ray_buffer_put(buf, tag);
 
-      lua_dump(L, (lua_Writer)rayL_writer, b);
+      lua_dump(L, (lua_Writer)ray_writer, b);
 
       len = (size_t)(b->head - b->base);
-      rayL_buffer_write_uleb128(buf, (uint32_t)len);
-      rayL_buffer_write(buf, b->base, len);
-      rayL_buffer_free(b);
+      ray_buffer_write_uleb128(buf, (uint32_t)len);
+      ray_buffer_write(buf, b->base, len);
+      ray_buffer_free(b);
 
       lua_newtable(L);
       for (i = 1; i <= ar.nups; i++) {
@@ -139,7 +139,7 @@ static void encode_value(lua_State* L, ray_buffer_t* buf, int val, int seen) {
     break;
   case LUA_TLIGHTUSERDATA: {
     void* ptr = lua_touserdata(L, -1);
-    rayL_buffer_write(buf, (uint8_t*)(void*)&ptr, sizeof(void*));
+    ray_buffer_write(buf, (uint8_t*)(void*)&ptr, sizeof(void*));
     break;
   }
   case LUA_TTHREAD:
@@ -197,30 +197,30 @@ static void find_decoder(lua_State* L, ray_buffer_t* buf, int seen) {
 } while (0)
 
 static void decode_value(lua_State* L, ray_buffer_t* buf, int seen) {
-  uint8_t val_type = rayL_buffer_get(buf);
+  uint8_t val_type = ray_buffer_get(buf);
   size_t  len;
   switch (val_type) {
   case LUA_TBOOLEAN: {
-    int val = rayL_buffer_get(buf);
+    int val = ray_buffer_get(buf);
     lua_pushboolean(L, val);
     break;
   }
   case LUA_TNUMBER: {
-    uint8_t* ptr = rayL_buffer_read(buf, sizeof(lua_Number));
+    uint8_t* ptr = ray_buffer_read(buf, sizeof(lua_Number));
     lua_pushnumber(L, *(lua_Number*)(void*)ptr);
     break;
   }
   case LUA_TSTRING: {
-    len = (size_t)rayL_buffer_read_uleb128(buf);
-    uint8_t* ptr = rayL_buffer_read(buf, len);
+    len = (size_t)ray_buffer_read_uleb128(buf);
+    uint8_t* ptr = ray_buffer_read(buf, len);
     lua_pushlstring(L, (const char *)ptr, len);
     break;
   }
   case LUA_TTABLE: {
-    uint8_t  tag = rayL_buffer_get(buf);
+    uint8_t  tag = ray_buffer_get(buf);
     uint32_t ref;
     if (tag == RAY_CODEC_TREF) {
-      ref = rayL_buffer_read_uleb128(buf);
+      ref = ray_buffer_read_uleb128(buf);
       lua_rawgeti(L, seen, ref);
     }
     else {
@@ -243,15 +243,15 @@ static void decode_value(lua_State* L, ray_buffer_t* buf, int seen) {
   }
   case LUA_TFUNCTION: {
     size_t nups;
-    uint8_t tag = rayL_buffer_get(buf);
+    uint8_t tag = ray_buffer_get(buf);
     if (tag == RAY_CODEC_TREF) {
-      uint32_t ref = rayL_buffer_read_uleb128(buf);
+      uint32_t ref = ray_buffer_read_uleb128(buf);
       lua_rawgeti(L, seen, ref);
     }
     else {
       size_t i;
-      len = rayL_buffer_read_uleb128(buf);
-      const char* code = (char *)rayL_buffer_read(buf, len);
+      len = ray_buffer_read_uleb128(buf);
+      const char* code = (char *)ray_buffer_read(buf, len);
       if (luaL_loadbuffer(L, code, len, "=chunk")) {
         luaL_error(L, "failed to load chunk\n");
       }
@@ -269,7 +269,7 @@ static void decode_value(lua_State* L, ray_buffer_t* buf, int seen) {
     break;
   }
   case LUA_TUSERDATA: {
-    uint8_t tag = rayL_buffer_get(buf);
+    uint8_t tag = ray_buffer_get(buf);
     assert(tag == RAY_CODEC_TUSR);
     decode_value(L, buf, seen); /* hook */
     if (lua_type(L, -1) == LUA_TSTRING) {
@@ -281,7 +281,7 @@ static void decode_value(lua_State* L, ray_buffer_t* buf, int seen) {
     break;
   }
   case LUA_TLIGHTUSERDATA: {
-    uint8_t* ptr = rayL_buffer_read(buf, sizeof(void*));
+    uint8_t* ptr = ray_buffer_read(buf, sizeof(void*));
     lua_pushlightuserdata(L, *(void**)ptr);
     break;
   }
@@ -295,7 +295,7 @@ static void decode_value(lua_State* L, ray_buffer_t* buf, int seen) {
 }
 
 static int decode_table(lua_State* L, ray_buffer_t* buf, int seen) {
-  for (;rayL_buffer_peek(buf) != LUA_TNIL;) {
+  for (;ray_buffer_peek(buf) != LUA_TNIL;) {
     decode_value(L, buf, seen);
     decode_value(L, buf, seen);
     lua_settable(L, -3);
@@ -310,7 +310,7 @@ static int decode_table(lua_State* L, ray_buffer_t* buf, int seen) {
 
 int ray_codec_encode(lua_State* L, int narg) {
   int i, base, seen;
-  ray_buffer_t* buf = rayL_buffer_new(64);
+  ray_buffer_t* buf = ray_buffer_new(64);
 
   base = lua_gettop(L) - narg + 1;
 
@@ -318,7 +318,7 @@ int ray_codec_encode(lua_State* L, int narg) {
   lua_insert(L, base);  /* seen */
   seen = base++;
 
-  rayL_buffer_write_uleb128(buf, narg);
+  ray_buffer_write_uleb128(buf, narg);
 
   for (i = base; i < base + narg; i++) {
     encode_value(L, buf, i, seen);
@@ -328,7 +328,7 @@ int ray_codec_encode(lua_State* L, int narg) {
   lua_settop(L, seen);
 
   lua_pushlstring(L, (char *)buf->base, buf->head - buf->base);
-  rayL_buffer_free(buf);
+  ray_buffer_free(buf);
 
   return 1;
 }
@@ -338,16 +338,16 @@ int ray_codec_decode(lua_State* L) {
   int nval, seen, i;
   int top = lua_gettop(L);
 
-  ray_buffer_t* buf = rayL_buffer_new(64);
+  ray_buffer_t* buf = ray_buffer_new(64);
 
   const char* data = luaL_checklstring(L, top, &len);
-  rayL_buffer_init_data(buf, (uint8_t*)data, len);
+  ray_buffer_init_data(buf, (uint8_t*)data, len);
 
   buf->head = buf->base;
 
   lua_newtable(L);
   seen = lua_gettop(L);
-  nval = rayL_buffer_read_uleb128(buf);
+  nval = ray_buffer_read_uleb128(buf);
 
   lua_checkstack(L, nval);
 
@@ -356,7 +356,7 @@ int ray_codec_decode(lua_State* L) {
   }
   lua_remove(L, seen);
 
-  rayL_buffer_free(buf);
+  ray_buffer_free(buf);
 
   assert(lua_gettop(L) == top + nval);
   return nval;

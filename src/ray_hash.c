@@ -6,7 +6,7 @@
    Also note that it only deals with C style strings. So make sure they're
    null terminated.
 
-   On a 1.7GHz i5 CPU this can do about 45 million lookups/updates per second 
+   On a 1.7GHz i5 CPU this can do about 45 million lookups/updates per second
    on 8 byte keys when compiled with -O1
    ============================================================================
 */
@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
- 
+
 #include "ray_hash.h"
 
 #define streq(s1,s2)  (!strcmp ((s1), (s2)))
@@ -191,6 +191,7 @@ void* ray_hash_remove(ray_hash_t* self, const char* key) {
 
   return val;
 }
+
 
 size_t ray_hash_size(ray_hash_t* self) {
   return self->count;

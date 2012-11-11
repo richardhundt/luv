@@ -13,6 +13,10 @@ uv_buf_t ray_alloc_cb(uv_handle_t* handle, size_t size) {
   return self->buf;
 }
 
+ray_cond_t* _stream_get_cond(ray_actor_t* self) {
+  return (ray_cond_t*)self->data;
+}
+
 /* used by tcp and pipe */
 void ray_connect_cb(uv_connect_t* req, int status) {
   ray_actor_t* self = (ray_actor_t*)req->data;
@@ -20,51 +24,48 @@ void ray_connect_cb(uv_connect_t* req, int status) {
     uv_err_t err = uv_last_error(ray_get_loop(self->L));
     lua_pushnil(self->L);
     lua_pushstring(self->L, uv_strerror(err));
-    ray_notify(self, 2);
+    ray_cond_t* cond = _stream_get_cond(self);
+    ray_cond_signal(cond, ray_msg(RAY_ERROR,2));
   }
   else {
-    ray_notify(self, 1);
+    ray_cond_signal(cond, ray_msg(RAY_DATA,1));
   }
 }
-
 
 static void _read_cb(uv_stream_t* stream, ssize_t len, uv_buf_t buf) {
   ray_actor_t* self = container_of(stream, ray_actor_t, h);
   ray_active(self) {
     lua_settop(self->L, 0);
-    TRACE("read callback\n");
+    ray_cond_t* cond = _stream_get_cond(self);
     if (len < 0) {
       uv_err_t err = uv_last_error(stream->loop);
       lua_pushnil(self->L);
       lua_pushstring(self->L, uv_strerror(err));
       if (err.code == UV_EOF) {
-        TRACE("got EOF\n");
         ray_stream_stop(self);
-        ray_notify(self, 2);
+        ray_cond_signal(cond, self, ray_msg(RAY_DATA,2));
       }
       else {
-        TRACE("got ERROR, closing\n");
-        ray_close(self);
+        ray_free(self);
       }
     }
     else {
       lua_pushinteger(self->L, len);
       lua_pushlstring(self->L, (char*)buf.base, len);
-      int seen = ray_notify(self, 2);
-      TRACE("notified: %i\n", seen);
+      ray_cond_signal(cond, self, ray_msg(RAY_DATA,2));
     }
   }
 }
 
 static void _write_cb(uv_write_t* req, int status) {
-  ray_actor_t* self = (ray_actor_t*)req->data;
+  ray_actor_t* curr = (ray_actor_t*)req->data;
   lua_settop(self->L, 0);
   ray_active(self) {
     if (status == -1) {
       uv_err_t err = uv_last_error(ray_get_loop(self->L));
       lua_pushnil(self->L);
       lua_pushstring(self->L, uv_strerror(err));
-      ray_notify(self, 2);
+      ray_cond_signal(cond, ray_msg(RAY_ERROR,2));
     }
     else {
       lua_pushboolean(self->L, 1);
@@ -102,23 +103,24 @@ static void _listen_cb(uv_stream_t* server, int status) {
   }
 }
 
-static void _close_cb(uv_handle_t* handle) {
-  ray_active(self) {
-    ray_actor_t* self = container_of(handle, ray_actor_t, h);
-    ray_notify(self, lua_gettop(self->L));
-  }
-  ray_actor_free(self);
+int ray_stream_start(ray_actor_t* self) {
+  return uv_read_start(&self->h.stream, ray_alloc_cb, _read_cb);
 }
 
-int rayM_stream_recv(ray_actor_t* self, ray_actor_t* that) {
+int ray_stream_stop(ray_actor_t* self) {
+  return uv_read_stop(&self->h.stream);
+}
+
+static int _stream_yield(ray_actor_t* self) {
   return ray_stream_stop(self);
 }
-int rayM_stream_send(ray_actor_t* self, ray_actor_t* from) {
+
+static int _stream_react(ray_actor_t* self, ray_mst_t* msg) {
   return ray_stream_start(self);
 }
-int rayM_stream_close(ray_actor_t* self) {
-  TRACE("closing, buf.len: %i\n", self->buf.len);
-  uv_close(&self->h.handle, _close_cb);
+
+static int _stream_close(ray_actor_t* self) {
+  uv_close(&self->h.handle, NULL);
   if (self->buf.len) {
     free(self->buf.base);
     self->buf.base = NULL;
@@ -127,28 +129,24 @@ int rayM_stream_close(ray_actor_t* self) {
   return 1;
 }
 
-int ray_stream_start(ray_actor_t* self) {
-  self->flags |= RAY_START;
-  return uv_read_start(&self->h.stream, ray_alloc_cb, _read_cb);
-}
-
-int ray_stream_stop(ray_actor_t* self) {
-  self->flags &= ~RAY_START;
-  return uv_read_stop(&self->h.stream);
+ray_vtable_t stream_v = {
+  react: _stream_react,
+  yield: _stream_yield,
+  close: _stream_close
 }
 
 int ray_stream_read(ray_actor_t* self, ray_actor_t* from, int len) {
-  TRACE("%p reading len %i", self, len);
-  if (lua_gettop(self->L) > 0) {
-    lua_xmove(self->L, from->L, 2);
-    return 2;
+  if (!ray_mailbox_empty(self)) {
+    ray_msg_t msg = ray_mailbox_get(self);
+    ray_send(from, self, msg);
+    return ray_msg_data(msg);
   }
   if (self->buf.len != len) {
     self->buf.base = realloc(self->buf.base, len);
     self->buf.len  = len;
   }
   ray_stream_start(self);
-  return ray_recv(from, self);
+  return ray_recv(from);
 }
 
 int ray_stream_write(ray_actor_t* self, ray_actor_t* from, uv_buf_t* b, int n) {
@@ -162,8 +160,9 @@ int ray_stream_write(ray_actor_t* self, ray_actor_t* from, uv_buf_t* b, int n) {
     return 2;
   }
 
+  /* stop reading during write, it's racy */
   ray_stream_stop(self);
-  return ray_recv(from, self);
+  return ray_recv(from);
 }
 
 int ray_stream_listen(ray_actor_t* self, ray_actor_t* from, int backlog) {
@@ -276,7 +275,6 @@ static int stream_accept(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)lua_touserdata(L, 1);
   ray_actor_t* conn = (ray_actor_t*)lua_touserdata(L, 2);
   ray_actor_t* curr = ray_current(L);
-  TRACE("HERE\n");
   return ray_stream_accept(self, curr, conn);
 }
 

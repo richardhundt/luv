@@ -13,33 +13,28 @@ ray_list_t* ray_list_new(void* data) {
   return self;
 }
 
-ray_list_t* ray_list_append(ray_list_t* self, void* data) {
-  ray_list_t* item = ray_list_new(data);
+ray_list_t* ray_list_insert_tail(ray_list_t* self, ray_list_t* item) {
   ngx_queue_insert_tail(&self->list, &item->list);
   return item;
 }
 
-ray_list_t* ray_list_insert(ray_list_t* self, void* data) {
-  ray_list_t* item = ray_list_new(data);
+ray_list_t* ray_list_insert_head(ray_list_t* self, ray_list_t* item) {
   ngx_queue_insert_head(&self->list, &item->list);
   return item;
 }
 
-void ray_list_remove(ray_list_t* item) {
+ray_list_t* ray_list_remove(ray_list_t* item) {
   ngx_queue_remove(&item->list);
   ngx_queue_init(&item->list);
-}
-
-void ray_list_delete(ray_list_t* item) {
-  ngx_queue_remove(&item->list);
-  free(item);
+  return item;
 }
 
 void ray_list_free(ray_list_t* self) {
   ray_list_t* i;
   while (!ray_list_empty(self)) {
     i = ray_list_head(self);
-    ray_list_delete(i);
+    ngx_queue_remove(&i->list);
+    free(i);
   }
   free(self);
 }
@@ -53,16 +48,18 @@ void ray__list_self_test(void) {
   assert(list->data == (void*)0xDEADBEEF);
   assert(ray_list_head(list) == list);
   assert(ray_list_tail(list) == list);
-  assert(ray_list_data(list) == (void*)0xDEADBEEF);
+  assert(list->data == (void*)0xDEADBEEF);
 
-  ray_list_t* item = ray_list_append(list, (void*)0xC0DEDBAD);
+  ray_list_t* item = ray_list_new((void*)0xC0DEDBAD);
+  ray_list_insert_tail(list, item);
+
   assert(!ray_list_empty(list));
   assert(!ray_list_empty(item));
 
-  ray_list_delete(item);
+  ray_list_remove(item);
   assert(ray_list_empty(list));
 
-  ray_list_insert(list, (void*)0xDEADF00D);
+  ray_list_insert_tail(list, ray_list_new((void*)0xDEADF00D));
   assert(!ray_list_empty(list));
 
   ray_list_t* l;
@@ -75,4 +72,4 @@ void ray__list_self_test(void) {
   ray_list_free(list);
   printf("OK\n");
 }
- 
+

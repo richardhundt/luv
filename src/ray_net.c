@@ -324,9 +324,9 @@ static int udp_send(lua_State* L) {
 
   const char* host = luaL_checkstring(L, 2);
   int         port = luaL_checkint(L, 3);
-  const char* mesg = luaL_checklstring(L, 4, &len);
+  const char* msg = luaL_checklstring(L, 4, &len);
 
-  uv_buf_t buf = uv_buf_init((char*)mesg, len);
+  uv_buf_t buf = uv_buf_init((char*)msg, len);
   struct sockaddr_in addr = uv_ip4_addr(host, port);
 
   if (uv_udp_send(&curr->r.udp_send, &self->h.udp, &buf, 1, addr, _send_cb)) {

@@ -4,7 +4,8 @@
 #include "ray_thread.h"
 
 static void _thread_enter(void* arg) {
-  lua_State* L = (lua_State*)arg;
+  ray_actor_t* self = (ray_actor_t*)arg;
+  lua_State* L = (lua_State*)self->u.data;
   ray_codec_decode(L);
 
   lua_remove(L, 1);
@@ -26,13 +27,74 @@ static void _thread_enter(void* arg) {
     lua_insert(L, 1);
   }
 
-  ray_send(ray_get_main(main), NULL, RAY_CLOSE);
+  uv_async_send(&self->h.async);
 }
 
 static void _async_cb(uv_async_t* handle, int status) {
-  (void)handle;
+  ray_actor_t* self = container_of(handle, ray_actor_t, h);
   (void)status;
+  ray_send(self, NULL, RAY_CLOSE);
 }
+
+static int _thread_RAY_AWAIT(ray_actor_t* self, ray_actor_t* from, int info) {
+}
+
+static int thread_xdup(ray_actor_t* a, ray_actor_t* b, int narg) {
+  lua_State* src = a->L;
+  lua_State* dst = b->L;
+  int type = lua_type(src, -1);
+  switch (type) {
+    case LUA_TNUMBER: {
+      lua_pushnumber(dst, lua_tonumber(src, -1));
+      break;
+    }
+    case LUA_TSTRING: {
+      size_t len;
+      const char* str = lua_tolstring(src, -1, &len);
+      lua_pushlstring(dst, str, len);
+      break;
+    }
+    case LUA_TBOOLEAN: {
+      lua_pushboolean(dst, lua_toboolean(src, -1));
+      break;
+    }
+    case LUA_TNIL: {
+      lua_pushnil(dst);
+      break;
+    }
+    case LUA_TLIGHTUSERDATA: {
+      void* data = lua_touserdata(src, -1);
+      lua_pushlightuserdata(dst, data);
+      break;
+    }
+    case LUA_TTABLE:
+    case LUA_TUSERDATA: {
+      if (luaL_getmetafield(src, -1, "__xdup")) {
+        lua_pushvalue(src, -2);
+        lua_pushlightuserdata(src, dst);
+        lua_call(src, 2, 0);
+        break;
+      }
+    }
+    default: {
+      return luaL_error(src, "cannot xdup a %s to thread", lua_typename(src, type));
+    }
+  }
+  return 0;
+}
+
+int rayM_thread_send(ray_actor_t* self, ray_actor_t* from, int info) {
+  switch (info) {
+    case RAY_AWAIT:
+      return _thread_RAY_AWAIT(self, from, info);
+    case RAY_CLOSE:
+      return _thread_RAY_CLOSE(self, from, info);
+    default: {
+
+    }
+  }
+}
+
 ray_actor_t* ray_thread_new(lua_State* L) {
   int narg = lua_gettop(L);
   TRACE("narg: %i\n", narg);
@@ -58,16 +120,11 @@ ray_actor_t* ray_thread_new(lua_State* L) {
   const char* data = lua_tolstring(L, -1, &len);
   lua_pushlstring(L1, data, len);
 
-  uv_thread_create(&self->tid, _thread_enter, L1);
+  uv_thread_create(&self->tid, _thread_enter, self);
 
   /* inserted udata below function, so now just udata on top */
   lua_settop(L, 1);
   return self;
-}
-
-int rayM_thread_close(ray_actor_t* self) {
-  ray_notify(self, LUA_MULTRET);
-  return 1;
 }
 
 /* Lua API */
@@ -80,17 +137,13 @@ static int thread_join(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_THREAD_T);
   ray_actor_t* from = ray_current(L);
 
-  ray_recv(from, self);
   uv_thread_join(&self->tid);
-
-  ray_close(self);
-  return lua_gettop(L);
+  return lua_gettop(self->L);
 }
 
 static int thread_free(lua_State* L) {
   ray_actor_t* self = lua_touserdata(L, 1);
-  TRACE("FREE: %p\n", self);
-  rayM_thread_close(self);
+  ray_send(self, NULL, RAY_CLOSE);
   return 1;
 }
 static int thread_tostring(lua_State* L) {

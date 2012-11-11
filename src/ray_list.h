@@ -14,14 +14,11 @@ struct ray_list_s {
 
 ray_list_t* ray_list_new(void* data);
 
-ray_list_t* ray_list_append(ray_list_t* self, void* data);
-ray_list_t* ray_list_insert(ray_list_t* self, void* data);
+ray_list_t* ray_list_insert_head(ray_list_t* self, ray_list_t* item);
 
-/* note this does not free() the item */
-void ray_list_remove(ray_list_t* item);
+ray_list_t* ray_list_insert_tail(ray_list_t* self, ray_list_t* item);
 
-/* this *does* free the item after removing it */
-void ray_list_delete(ray_list_t* self);
+ray_list_t* ray_list_remove(ray_list_t* item);
 
 /* frees all members in the list, then frees self */
 void ray_list_free(ray_list_t* self);
@@ -39,8 +36,6 @@ void ray_list_free(ray_list_t* self);
 
 #define ray_list_prev(I) \
   ngx_queue_data(ngx_queue_prev(&(I)->list), ray_list_t, list)
-
-#define ray_list_data(I) ((I)->data)
 
 #define ray_list_empty(I) (ngx_queue_empty(&(I)->list))
 
