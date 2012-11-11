@@ -8,6 +8,7 @@
 static int _fiber_yield(ray_state_t* self) {
   lua_State* L = self->L;
   self->flags &= ~RAY_ACTIVE;
+  TRACE("YIELD\n");
   return lua_yield(L, lua_gettop(L));
 }
 
@@ -15,8 +16,10 @@ static int _fiber_react(ray_state_t* self) {
   int narg;
   lua_State* L = self->L;
 
+  TRACE("%p reacting, is active: %i...\n", self, self->flags & RAY_ACTIVE);
   if (self->flags & RAY_ACTIVE) {
     self->flags &= ~RAY_ACTIVE;
+    TRACE("enqueue...\n");
     return ray_ready(self);
   }
 
@@ -31,6 +34,7 @@ static int _fiber_react(ray_state_t* self) {
   self->flags |= RAY_ACTIVE;
   self->flags &= ~RAY_FIBER_READY;
 
+  TRACE("RESUME\n");
   int rc = lua_resume(L, narg);
 
   switch (rc) {

@@ -15,7 +15,7 @@ int ray_cond_wait(ray_cond_t* self, ray_state_t* that) {
 }
 
 int ray_cond_signal(ray_cond_t* self, ray_state_t* from, int narg) {
-  if (from && narg < 0) narg = lua_gettop(from->L);
+  if (narg < 0) narg = lua_gettop(from->L);
 
   ngx_queue_t* queue = &self->queue;
   if (ngx_queue_empty(queue)) return 0;
@@ -28,16 +28,20 @@ int ray_cond_signal(ray_cond_t* self, ray_state_t* from, int narg) {
     item = ngx_queue_head(queue);
     wait = ngx_queue_data(item, ray_state_t, cond);
     ray_cond_dequeue(wait);
-    ray_push(from, narg);
-    ray_xcopy(from, wait, narg);
+    if (narg) {
+      ray_push(from, narg);
+      ray_xcopy(from, wait, narg);
+    }
     ray_ready(wait);
     if (item == tail) break;
   }
 
-  if (from) lua_pop(from->L, narg);
+  if (narg) lua_pop(from->L, narg);
   return 1;
 }
 
 void ray_cond_free(ray_cond_t* self) {
+  /* TODO: wake up waiting states on free */
+  assert(ngx_queue_empty(&self->queue));
   free(self);
 }

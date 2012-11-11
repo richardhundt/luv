@@ -21,14 +21,21 @@ void ray_queue_init(ray_queue_t* self, lua_State* L, size_t size) {
 }
 
 int ray_queue_put(ray_queue_t* self, ray_state_t* curr) {
-  lua_checkstack(self->L, 1);
-  lua_xmove(curr->L, self->L, 1);
-
   if (!ngx_queue_empty(&self->wget)) {
+    int slot = ray_queue_slot(self, self->tail);
+
     ngx_queue_t* q = ngx_queue_head(&self->wget);
     ray_state_t* s = ngx_queue_data(q, ray_state_t, cond);
     ray_cond_dequeue(s);
+
+    lua_pushvalue(self->L, slot);
+    lua_pushnil(self->L);
+    lua_replace(self->L, slot);
+
+    lua_xmove(self->L, s->L, 1);
     ray_ready(s);
+
+    ++self->tail;
   }
 
   if (ray_queue_full(self)) {
@@ -36,8 +43,11 @@ int ray_queue_put(ray_queue_t* self, ray_state_t* curr) {
     return ray_yield(curr);
   }
 
+  lua_checkstack(self->L, 1);
+  lua_xmove(curr->L, self->L, 1);
   lua_replace(self->L, ray_queue_head(self));
   ++self->head;
+
   return 1;
 }
 
@@ -47,6 +57,11 @@ int ray_queue_get(ray_queue_t* self, ray_state_t* curr) {
     ray_state_t* s = ngx_queue_data(q, ray_state_t, cond);
     ray_cond_dequeue(s);
     ray_ready(s);
+
+    lua_checkstack(self->L, 1);
+    lua_xmove(curr->L, self->L, 1);
+    lua_replace(self->L, ray_queue_head(self));
+    ++self->head;
   }
 
   if (ray_queue_empty(self)) {
@@ -63,18 +78,6 @@ int ray_queue_get(ray_queue_t* self, ray_state_t* curr) {
   lua_xmove(self->L, curr->L, 1);
 
   ++self->tail;
-
-  int top = lua_gettop(self->L);
-  if (top > self->size) {
-    lua_checkstack(self->L, 1);
-    while (top-- > self->size && !ray_queue_full(self)) {
-      lua_pushvalue(self->L, self->size + 1);
-      lua_replace(self->L, ray_queue_head(self));
-      lua_remove(self->L, self->size + 1);
-      ++self->head;
-    }
-  }
-
   return 1;
 }
 
