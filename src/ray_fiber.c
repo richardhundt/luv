@@ -8,6 +8,7 @@
 static int _fiber_yield(ray_actor_t* self) {
   lua_State* L = self->L;
   self->flags &= ~RAY_ACTIVE;
+  TRACE("YIELD, narg: %i\n", lua_gettop(L));
   return lua_yield(L, lua_gettop(L));
 }
 
@@ -15,13 +16,24 @@ static int _fiber_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
   int narg = ray_msg_data(msg);
   lua_State* L = self->L;
 
+  if (ray_msg_type(msg) != RAY_ASYNC) {
+    return ray_send(ray_get_main(L), self, ray_msg(RAY_ASYNC,0));
+  }
+
+  TRACE("HERE... reacting...\n");
   if (!(self->flags & RAY_FIBER_STARTED)) {
     self->flags |= RAY_FIBER_STARTED;
     narg = lua_gettop(L) - 1;
   }
+  else {
+    ray_msg_t orig = ray_mailbox_get(self);
+    narg = ray_msg_data(orig);
+    if (narg < 0) narg = lua_gettop(self->L);
+  }
 
   self->flags |= RAY_ACTIVE;
   self->flags &= ~RAY_FIBER_READY;
+
   int rc = lua_resume(L, narg);
 
   switch (rc) {

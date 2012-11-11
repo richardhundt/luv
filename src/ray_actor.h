@@ -112,6 +112,10 @@ ray_actor_t* ray_current (lua_State* L);
 
 ray_actor_t* ray_actor_new(lua_State* L, const char* m, const ray_vtable_t* v);
 
+int ray_yield(ray_actor_t* self);
+int ray_close(ray_actor_t* self);
+int ray_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg);
+
 int ray_send(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg);
 int ray_recv(ray_actor_t* self);
 
@@ -127,6 +131,10 @@ void ray_decref(ray_actor_t* self);
 
 /* call this from __gc to release self->L */
 int ray_free(ray_actor_t* self);
+
+ray_msg_t ray_mailbox_get  (ray_actor_t* self);
+void      ray_mailbox_put  (ray_actor_t* self, lua_State* L, ray_msg_t msg);
+int       ray_mailbox_empty(ray_actor_t* self);
 
 /* these do refcounting on actors */
 int ray_hash_set_actor(ray_hash_t* self, const char* key, ray_actor_t* val);

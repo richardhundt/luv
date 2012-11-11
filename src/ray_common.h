@@ -10,9 +10,6 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
-#include "uv/include/uv.h"
-#include "ngx-queue.h"
-
 #ifdef WIN32
 # define UNUSED /* empty */
 # define INLINE __inline
@@ -22,6 +19,10 @@
 #endif
 
 #define RAY_DEBUG
+#define NGX_DEBUG
+
+#include "uv/include/uv.h"
+#include "ngx-queue.h"
 
 #ifdef RAY_DEBUG
 #  define TRACE(fmt, ...) do { \

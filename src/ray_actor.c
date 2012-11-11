@@ -82,6 +82,7 @@ ray_msg_t ray_mailbox_get(ray_actor_t* self) {
   return msg;
 }
 void ray_mailbox_put(ray_actor_t* self, lua_State* L, ray_msg_t msg) {
+  TRACE("PUT - main: %p, self: %p, L: %p, msg_type: %i\n", ray_get_main(L), self, L, ray_msg_type(msg));
   int narg = ray_msg_data(msg);
   if (narg < 0) narg = lua_gettop(L);
   ray_queue_put_integer(&self->mbox, msg);
@@ -180,14 +181,12 @@ int ray_free(ray_actor_t* self) {
 
 /* reference counting */
 void ray_incref(ray_actor_t* self) {
-  //TRACE("refcount: %i\n", self->ref_count);
   if (self->ref_count++ == 0) {
     ray_push_self(self);
     self->ref = luaL_ref(self->L, LUA_REGISTRYINDEX);
   }
 }
 void ray_decref(ray_actor_t* self) {
-  //TRACE("refcount: %i\n", self->ref_count);
   if (--self->ref_count == 0) {
     luaL_unref(self->L, LUA_REGISTRYINDEX, self->ref);
     self->ref = LUA_NOREF;
@@ -258,13 +257,14 @@ static int _main_yield(ray_actor_t* self) {
   self->flags &= ~RAY_ACTIVE;
   do {
     while (!ngx_queue_empty(ready)) {
-      ngx_queue_t* q = ngx_queue_last(ready);
+      ngx_queue_t* q = ngx_queue_head(ready);
       ray_actor_t* a = ngx_queue_data(q, ray_actor_t, cond);
       ray_decref(a);
       ngx_queue_remove(q);
       a->v.react(a, self, ray_msg(RAY_ASYNC,0));
     }
     events = uv_run_once(loop);
+
     if (ray_is_active(self)) break;
   }
   while (events || !ngx_queue_empty(ready));
@@ -277,14 +277,16 @@ static int _main_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
   switch (ray_msg_type(msg)) {
     case RAY_ASYNC: {
       ngx_queue_t* ready = (ngx_queue_t*)self->u.data;
-      ngx_queue_insert_head(ready, &from->cond);
+      ngx_queue_insert_tail(ready, &from->cond);
       ray_incref(from);
+      break;
     }
     default: {
       ray_mailbox_get(self);
       self->flags |= RAY_ACTIVE;
     }
   }
+
   uv_async_send(&self->h.async);
   return 0;
 }
@@ -315,7 +317,7 @@ int ray_init_main(lua_State* L) {
     lua_newtable(L);
     lua_newtable(L);
     lua_pushstring(L, "v");
-    lua_setfield(L, -2, "__blah");
+    lua_setfield(L, -2, "__mode");
     lua_setmetatable(L, -2);
     lua_setfield(L, LUA_REGISTRYINDEX, RAY_WEAK);
 

@@ -10,7 +10,7 @@ ray_queue_t* ray_queue_new(lua_State* L, int size) {
 void ray_queue_init(ray_queue_t* self, lua_State* L, size_t size) {
   self->L     = lua_newthread(L);
   self->L_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-  self->size  = size || 32;
+  self->size  = size;
   self->head  = 0;
   self->tail  = 0;
   lua_checkstack(self->L, self->size);
@@ -54,7 +54,6 @@ int ray_queue_get(ray_queue_t* self) {
   return 1;
 }
 
-
 void ray_queue_put_value(ray_queue_t* self, lua_State* L) {
   lua_xmove(L, self->L, 1);
   ray_queue_put(self);
@@ -76,14 +75,16 @@ void ray_queue_put_tuple(ray_queue_t* self, lua_State* L, int nval) {
 }
 int ray_queue_get_tuple(ray_queue_t* self, lua_State* L) {
   if (!ray_queue_get(self)) return 0;
+  int nval, i;
 
-  int nval = luaL_checkint(self->L, -1);
+  nval = luaL_checkint(self->L, -1);
   lua_pop(self->L, 1);
 
   lua_checkstack(L, nval);
   lua_checkstack(self->L, nval);
 
-  while (--nval >= 0) {
+  i = nval;
+  while (--i >= 0) {
     ray_queue_get(self);
   }
 

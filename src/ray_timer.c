@@ -5,7 +5,7 @@
 
 static void _sleep_cb(uv_timer_t* handle, int status) {
   ray_actor_t* self = container_of(handle, ray_actor_t, h);
-  ray_actor_t* wait = (ray_actor_t*)self->data;
+  ray_actor_t* wait = (ray_actor_t*)self->u.data;
   lua_pushboolean(self->L, 1);
   ray_send(wait, self, ray_msg(RAY_DATA,1));
   uv_close(&self->h.handle, NULL);
@@ -14,9 +14,10 @@ static void _sleep_cb(uv_timer_t* handle, int status) {
 
 static void _timer_cb(uv_timer_t* h, int status) {
   ray_actor_t* self = container_of(h, ray_actor_t, h);
-  ray_cond_t*  cond = (ray_cond_t*)self->data;
+  ray_cond_t*  cond = (ray_cond_t*)self->u.data;
   lua_pushboolean(self->L, 1);
-  ray_cond_signal(cond, ray_msg(RAY_DATA,1));
+  TRACE("tick - actor: %p, actor->L: %p\n", self, self->L);
+  ray_cond_signal(cond, self, ray_msg(RAY_DATA,1));
 }
 
 static int _timer_yield(ray_actor_t* self) {
@@ -24,9 +25,12 @@ static int _timer_yield(ray_actor_t* self) {
   return 1;
 }
 
-static int _timer_react(ray_actor_t* self, ray_msg_t msg) {
+int ray_timer_start(ray_actor_t* self, int64_t timeout, int64_t repeat);
+
+static int _timer_react(ray_actor_t* self, ray_actor_t* from, ray_msg_t msg) {
   switch (ray_msg_type(msg)) {
     case RAY_DATA: {
+      assert(0);
       if (self->flags & RAY_TIMER_STARTED) {
         ray_timer_stop(self);
       }
@@ -34,7 +38,7 @@ static int _timer_react(ray_actor_t* self, ray_msg_t msg) {
       lua_settop(self->L, 0);
       ray_mailbox_get(self);
 
-      uint64_t timeout, repeat;
+      int64_t timeout, repeat;
       timeout = luaL_optlong(self->L, 1, 0L);
       repeat  = luaL_optlong(self->L, 2, 0L);
 
@@ -52,9 +56,7 @@ static int _timer_react(ray_actor_t* self, ray_msg_t msg) {
 
 static int _timer_close(ray_actor_t* self) {
   uv_close(&self->h.handle, NULL);
-  if (self->data) ray_cond_free((ray_cond_t*)self->data);
-  ray_cond_t* cond = (ray_cond_t*)self->data;
-  ray_cond_signal(cond, ray_msg(RAY_ABORT,0));
+  if (self->u.data) ray_cond_free((ray_cond_t*)self->u.data);
   return 1;
 }
 
@@ -66,17 +68,26 @@ static ray_vtable_t timer_v = {
 ray_actor_t* ray_timer_new(lua_State* L) {
   ray_actor_t* self = ray_actor_new(L, RAY_TIMER_T, &timer_v);
   ray_cond_t*  cond = ray_cond_new(L);
-  self->data = cond;
+  self->u.data = cond;
+  uv_timer_init(ray_get_loop(L), &self->h.timer);
   return self;
 }
 
 int ray_timer_wait(ray_actor_t* self, ray_actor_t* wait) {
-  ray_cond_t* cond = (ray_cond_t*)self->data;
+  ray_cond_t* cond = (ray_cond_t*)self->u.data;
   return ray_cond_wait(cond, wait);
 }
 
 int ray_timer_again(ray_actor_t* self) {
   return uv_timer_again(&self->h.timer);
+}
+
+int ray_timer_start(ray_actor_t* self, int64_t timeout, int64_t repeat) {
+  return uv_timer_start(&self->h.timer, _timer_cb, timeout, repeat);
+}
+
+int ray_timer_stop(ray_actor_t* self) {
+  return uv_timer_stop(&self->h.timer);
 }
 
 /* Lua API */
@@ -96,22 +107,22 @@ static int timer_sleep(lua_State* L) {
   uv_timer_init(ray_get_loop(L), &self->h.timer);
   uv_timer_start(&self->h.timer, _sleep_cb, (long)(timeout * 1000), 0L);
 
-  self->data = curr;
+  self->u.data = curr;
 
   return ray_recv(curr);
 }
 
 static int timer_start(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  int64_t timeout = luaL_optlong(self->L, 1, 0L);
-  int64_t repeat  = luaL_optlong(self->L, 2, 0L);
-  ray_timer_start(self, curr, timeout, repeat);
+  int64_t timeout = luaL_optlong(L, 2, 0L);
+  int64_t repeat  = luaL_optlong(L, 3, 0L);
+  ray_timer_start(self, timeout, repeat);
   return 1;
 }
 
 static int timer_again(lua_State* L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
-  ray_timer_again(self, ray_current(L));
+  ray_timer_again(self);
   return 1;
 }
 
@@ -129,6 +140,7 @@ static int timer_wait(lua_State *L) {
 
 static int timer_free(lua_State *L) {
   ray_actor_t* self = (ray_actor_t*)luaL_checkudata(L, 1, RAY_TIMER_T);
+  ray_timer_stop(self);
   ray_free(self);
   return 1;
 }
