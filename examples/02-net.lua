@@ -1,18 +1,20 @@
-local luv = require('luv')
+local fiber = require("ray.fiber")
+local net   = require("ray.net")
 
-local server = luv.net.tcp()
+local server = net.tcp()
 
 print("SERVER:", server)
-print("BIND:", server:bind("127.0.0.1", 8080))
+print("BIND:",   server:bind("127.0.0.1", 8080))
 print("LISTEN:", server:listen())
 
 while true do
    print("ACCEPT LOOP TOP")
 
-   local client = luv.net.tcp()
-   print("ACCEPT:", server:accept(client)) -- block here
+   local client = server:accept()
+   print("ACCEPT:", client)
+   assert(client)
 
-   local fib = luv.fiber.create(function()
+   local fib = fiber.create(function()
       print("CHILD")
       while true do
          print("READ LOOP TOP")
