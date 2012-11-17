@@ -1,17 +1,24 @@
 #include "ray_lib.h"
 #include "ray_state.h"
 #include "ray_stream.h"
+#include "ray_cond.h"
+
 #include <string.h>
 
-static const ray_vtable_t tcp_v = {
-  react: rayM_stream_react,
-  yield: rayM_stream_yield,
-  close: rayM_stream_close
+static int _tcp_alloc(ray_state_t* self) {
+  TRACE("INITIALIZING\n");
+  return uv_tcp_init(ray_get_loop(self->L), &self->h.tcp);
 }
 
+static ray_vtable_t tcp_v = {
+  alloc: _tcp_alloc,
+  react: ray_stream_react,
+  yield: ray_stream_yield,
+  close: ray_stream_close
+};
+
 static int tcp_new(lua_State* L) {
-  ray_state_t* self = ray_state_new(L, RAY_TCP_T, &stream_v);
-  uv_tcp_init(ray_get_loop(L), &self->h.tcp);
+  ray_state_t* self = ray_stream_new(L, RAY_TCP_T, &tcp_v);
   return 1;
 }
 
@@ -36,7 +43,7 @@ static void _getaddrinfo_cb(uv_getaddrinfo_t* req, int s, struct addrinfo* ai) {
   lua_pushstring (self->L, host);
   lua_pushinteger(self->L, port);
 
-  ray_send(self, self, ray_msg(RAY_DATA,2));
+  ray_ready(self);
 
   uv_freeaddrinfo(ai);
 }
@@ -150,25 +157,18 @@ static int tcp_connect(lua_State *L) {
   port = luaL_checkint(L, 3);
   addr = uv_ip4_addr(host, port);
 
-  lua_settop(L, 2);
-
   curr->r.req.data = self;
-
-  /* put a copy of self on the stack to return on success */
-  lua_settop(L, 1);
-  lua_settop(self->L, 0);
-  lua_xmove(L, self->L, 1);
 
   rv = uv_tcp_connect(&curr->r.connect, &self->h.tcp, addr, ray_connect_cb);
   if (rv) {
     uv_err_t err = uv_last_error(ray_get_loop(L));
-    lua_settop(L, 0);
     lua_pushnil(L);
     lua_pushstring(L, uv_strerror(err));
     return 2;
   }
 
-  return ray_yield(curr);
+  ray_cond_t* cond = (ray_cond_t*)ray_hash_get(self->u.hash, "cond");
+  return ray_cond_wait(cond, curr);
 }
 
 static int tcp_nodelay(lua_State* L) {
@@ -278,15 +278,19 @@ static int tcp_tostring(lua_State *L) {
   return 1;
 }
 
+static int _udp_alloc(ray_state_t* self) {
+  return uv_udp_init(ray_get_loop(self->L), &self->h.udp);
+}
+
 static ray_vtable_t udp_v = {
-  react: rayM_stream_react,
-  yield: rayM_stream_yield,
-  close: rayM_stream_close
+  alloc: _udp_alloc,
+  react: ray_stream_react,
+  yield: ray_stream_yield,
+  close: ray_stream_close
 };
 
 static int udp_new(lua_State* L) {
-  ray_state_t* self = ray_state_new(L, RAY_UDP_T, &udp_v);
-  uv_udp_init(ray_get_loop(L), &self->h.udp);
+  ray_state_t* self = ray_stream_new(L, RAY_UDP_T, &udp_v);
   return 1;
 }
 
@@ -310,9 +314,9 @@ static int udp_bind(lua_State* L) {
 static void _send_cb(uv_udp_send_t* req, int status) {
   ray_state_t* curr = container_of(req, ray_state_t, r);
   ray_state_t* self = (ray_state_t*)req->data;
-  lua_settop(curr->L, 0);
-  lua_pushinteger(curr->L, status);
-  ray_send(curr, self);
+  lua_pushinteger(self->L, status);
+  ray_cond_t* cond = (ray_cond_t*)ray_hash_get(self->u.hash, "cond");
+  ray_cond_signal(cond, self, 1);
 }
 
 static int udp_send(lua_State* L) {
@@ -362,14 +366,17 @@ static void _recv_cb(uv_udp_t* handle, ssize_t nread, uv_buf_t buf, struct socka
   lua_pushstring(self->L, host);
   lua_pushinteger(self->L, port);
 
-  ray_notify(self, 3);
+  ray_cond_t* cond = (ray_cond_t*)ray_hash_get(self->u.hash, "cond");
+  ray_cond_signal(cond, self, 3);
+
   lua_settop(self->L, 0);
 }
 
 static int udp_recv(lua_State* L) {
   ray_state_t* self = (ray_state_t*)luaL_checkudata(L, 1, RAY_UDP_T);
+  ray_cond_t*  cond = (ray_cond_t*)ray_hash_get(self->u.hash, "cond");
   uv_udp_recv_start(&self->h.udp, ray_alloc_cb, _recv_cb);
-  return ray_yield(ray_current(L));
+  return ray_cond_wait(cond, ray_current(L));
 }
 
 static const char* RAY_UDP_MEMBERSHIP_OPTS[] = { "join", "leave", NULL };

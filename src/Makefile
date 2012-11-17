@@ -27,6 +27,7 @@ SRCS := ray_lib.c \
  	ray_hash.c \
  	ray_list.c \
  	ray_cond.c \
+ 	ray_chan.c \
 	ray_queue.c \
 	ray_state.c
 
@@ -36,6 +37,7 @@ BASE := ray_lib.o \
 	ray_hash.o \
 	ray_list.o \
 	ray_cond.o \
+	ray_chan.o \
 	ray_queue.o \
 	ray_state.o
 

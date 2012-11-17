@@ -10,7 +10,7 @@ struct ray_cond_s {
   ngx_queue_t queue;
 };
 
-ray_cond_t* ray_cond_new(lua_State* L);
+ray_cond_t* ray_cond_new();
 
 int ray_cond_wait   (ray_cond_t* self, ray_state_t* curr);
 int ray_cond_signal (ray_cond_t* self, ray_state_t* from, int narg);

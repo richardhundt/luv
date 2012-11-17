@@ -3,7 +3,7 @@
 #include "ray_queue.h"
 #include "ray_cond.h"
 
-ray_cond_t* ray_cond_new(lua_State* L) {
+ray_cond_t* ray_cond_new() {
   ray_cond_t* self = (ray_cond_t*)malloc(sizeof(ray_cond_t));
   ngx_queue_init(&self->queue);
   return self;

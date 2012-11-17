@@ -20,11 +20,13 @@ typedef uv_buf_t ray_buf_t;
 
 typedef struct ray_state_s ray_state_t;
 
+typedef int (*ray_alloc_t)(ray_state_t* self);
 typedef int (*ray_react_t)(ray_state_t* self);
 typedef int (*ray_yield_t)(ray_state_t* self);
 typedef int (*ray_close_t)(ray_state_t* self);
 
 typedef struct ray_vtable_s {
+  ray_alloc_t alloc;
   ray_react_t react;
   ray_yield_t yield;
   ray_close_t close;
@@ -78,6 +80,7 @@ int ray_react(ray_state_t* self);
 int ray_close(ray_state_t* self);
 
 int ray_ready(ray_state_t* self);
+int ray_error(ray_state_t* self);
 
 /* stack utilities */
 int  ray_xcopy (ray_state_t* self, ray_state_t* that, int narg);

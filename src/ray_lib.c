@@ -91,6 +91,13 @@ int rayL_class(lua_State* L, const char* name, luaL_Reg* meths) {
   return 1;
 }
 
+int rayL_extend(lua_State* L, const char* base, const char* name, luaL_Reg* meths) {
+  rayL_class(L, name, meths);
+  luaL_getmetatable(L, base);
+  lua_setmetatable(L, -2);
+  return 1;
+}
+
 void* rayL_checkudata(lua_State* L, int idx, const char* name) {
   luaL_checktype(L, idx, LUA_TUSERDATA);
   luaL_getmetatable(L, name);

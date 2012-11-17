@@ -13,6 +13,7 @@ int rayL_lib_encoder(lua_State* L);
 
 int rayL_module (lua_State* L, const char* name, luaL_Reg* funcs);
 int rayL_class  (lua_State* L, const char* name, luaL_Reg* meths);
+int rayL_extend (lua_State* L, const char* name, const char* base, luaL_Reg* meths);
 int rayL_require(lua_State* L, const char* name);
 
 void* rayL_checkudata(lua_State* L, int idx, const char* name);

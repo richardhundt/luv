@@ -4,14 +4,26 @@
 #include "ray_lib.h"
 #include "ray_state.h"
 
+typedef struct ray_item_s {
+  int    type;
+  union {
+    ray_buf_t   buf;
+    lua_Number  num;
+    int         bit;
+    void*       ptr;
+  } u;
+} ray_item_t;
+
 typedef struct ray_queue_s {
-  lua_State*  L;
-  int         L_ref;
-  int         head;
-  int         tail;
-  size_t      size;
-  ngx_queue_t wput;
-  ngx_queue_t wget;
+  ray_item_t*   data; /* circular queue data */
+  size_t*       info; /* tuples in each logical entry */
+  size_t        size; /* number of tuples */
+  size_t        nval; /* number of items */
+  size_t        ncap; /* item capacity */
+  unsigned int  head; /* head index into .info */
+  unsigned int  tail; /* tail index into .info */
+  ngx_queue_t   wput; /* threads waiting to put */
+  ngx_queue_t   wget; /* threads waiting to get */
 } ray_queue_t;
 
 #define ray_queue_slot(Q,I) ((I) % (Q)->size + 1)
@@ -28,11 +40,10 @@ typedef struct ray_queue_s {
 #define ray_queue_empty(Q) (ray_queue_count(Q) == 0)
 #define ray_queue_full(Q)  (ray_queue_count(Q) == (Q)->size)
 
-ray_queue_t* ray_queue_new(lua_State* L, int size);
-void ray_queue_init(ray_queue_t* self, lua_State* L, size_t size);
-
-int  ray_queue_put (ray_queue_t* self, ray_state_t* curr);
-int  ray_queue_get (ray_queue_t* self, ray_state_t* curr);
+ray_queue_t* ray_queue_new(size_t size);
+int  ray_queue_put(ray_queue_t* self, ray_state_t* curr, int narg);
+int  ray_queue_get(ray_queue_t* self, ray_state_t* curr);
 void ray_queue_free(ray_queue_t* self);
+
 
 #endif /* _RAY_QUEUE_H_ */

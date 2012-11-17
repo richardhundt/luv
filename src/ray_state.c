@@ -75,6 +75,9 @@ ray_state_t* ray_state_new(lua_State* L, const char* m, const ray_vtable_t* v) {
   self->L_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
   ngx_queue_init(&self->cond);
+
+  if (self->v.alloc) self->v.alloc(self);
+
   return self;
 }
 
@@ -94,7 +97,8 @@ int ray_close(ray_state_t* self) {
 }
 
 int ray_ready(ray_state_t* that) {
-  ray_state_t* boss  = ray_get_main(that->L);
+  ray_state_t* boss = ray_get_main(that->L);
+  TRACE("boss: %p, that: %p\n", boss, that);
   if (that == boss) {
     return ray_react(that);
   }
@@ -136,6 +140,7 @@ static luaL_Reg state_meths[] = {
 
 /* allows us to interrupt the event loop if main gets a message */
 static void _main_async_cb(uv_async_t* handle, int status) {
+  TRACE("main seen async\n");
   (void)status;
   (void)handle;
 }
@@ -156,12 +161,14 @@ static int _main_yield(ray_state_t* self) {
       ray_cond_dequeue(a);
       a->v.react(a);
     }
+    TRACE("enter uv_run_once...\n");
     events = uv_run_once(loop);
+    TRACE("leave uv_run_once, events: %i\n", events);
 
     if (ray_is_active(self)) break;
   }
   while (events || !ngx_queue_empty(ready));
-
+  TRACE("main unloop\n");
   self->flags |= RAY_ACTIVE;
   return lua_gettop(L);
 }

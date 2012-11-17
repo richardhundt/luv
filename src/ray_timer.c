@@ -41,7 +41,7 @@ static ray_vtable_t timer_v = {
 
 ray_state_t* ray_timer_new(lua_State* L) {
   ray_state_t* self = ray_state_new(L, RAY_TIMER_T, &timer_v);
-  ray_cond_t*  cond = ray_cond_new(L);
+  ray_cond_t*  cond = ray_cond_new();
   self->u.data = cond;
   uv_timer_init(ray_get_loop(L), &self->h.timer);
   return self;
