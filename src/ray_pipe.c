@@ -2,7 +2,7 @@
 #include "ray_state.h"
 
 static int ray_pipe_new(lua_State* L) {
-  ray_object_t* self = rayL_object_new(L, RAY_PIPE_T);
+  ray_object_t* self = ray_stream_new(L, RAY_PIPE_T);
   int ipc = 0;
   if (!lua_isnoneornil(L, 2)) {
     luaL_checktype(L, 2, LUA_TBOOLEAN);
@@ -44,12 +44,11 @@ static int ray_pipe_connect(lua_State* L) {
   ray_state_t*  curr = rayL_state_self(L);
 
   uv_pipe_connect(&curr->req.connect, &self->h.pipe, path, rayL_connect_cb);
-
   return 0;
 }
 
 static int ray_pipe_tostring(lua_State *L) {
-  ray_object_t *self = (ray_object_t*)luaL_checkudata(L, 1, RAY_PIPE_T);
+  ray_state_t *self = (ray_state_t*)luaL_checkudata(L, 1, RAY_PIPE_T);
   lua_pushfstring(L, "userdata<%s>: %p", RAY_PIPE_T, self);
   return 1;
 }
@@ -67,3 +66,6 @@ luaL_Reg ray_pipe_meths[] = {
   {NULL,          NULL}
 };
 
+LUALIB_API int luaopen_ray_pipe(lua_State* L) {
+
+}

@@ -149,7 +149,6 @@ static int _main_yield(ray_state_t* self) {
   int events = 0;
   lua_State* L = self->L;
   uv_loop_t* loop = ray_get_loop(L);
-  lua_settop(L, 0);
 
   ngx_queue_t* ready = (ngx_queue_t*)self->u.data;
 

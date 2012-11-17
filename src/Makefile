@@ -43,7 +43,7 @@ BASE := ray_lib.o \
 
 LIBS := ./uv/libuv.a
 
-all: deps $(OBJS) ../ray/fiber.so ../ray/timer.so ../ray/net.so
+all: deps $(OBJS) ../ray/fiber.so ../ray/timer.so ../ray/net.so ../ray/fs.so
 
 ../ray/fiber.so: $(OBJS)
 	$(CC) $(BASE) $(LIBS) ray_fiber.c -o ../ray/fiber.so $(LDFLAGS)
@@ -53,6 +53,9 @@ all: deps $(OBJS) ../ray/fiber.so ../ray/timer.so ../ray/net.so
 
 ../ray/net.so: $(OBJS)
 	$(CC) $(BASE) $(LIBS) ray_stream.c ray_net.c -o ../ray/net.so $(LDFLAGS)
+
+../ray/fs.so: $(OBJS)
+	$(CC) $(BASE) $(LIBS) ray_fs.c -o ../ray/fs.so $(LDFLAGS)
 
 $(OBJS):
 	$(CC) -c $(CFLAGS) $(SRCS)
